@@ -1,12 +1,14 @@
 name: Docs
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - "docs/**"
       - "mkdocs.yml"
       - "src/**"
+      - ".github/workflows/docs.yml"
 
 permissions:
   contents: read
@@ -30,7 +32,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --extra docs
+        run: uv sync --extra docs --extra z3
 
       - name: Build mkdocs site
         run: uv run mkdocs build --strict
