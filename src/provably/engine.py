@@ -24,12 +24,14 @@ from __future__ import annotations
 import ast
 import hashlib
 import inspect
+import json
 import textwrap
 import time
 import types as _types
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, get_type_hints
 
 import z3
@@ -45,6 +47,7 @@ _config: dict[str, Any] = {
     "timeout_ms": 5000,
     "raise_on_failure": False,
     "log_level": "WARNING",
+    "cache_dir": str(Path.home() / ".provably" / "cache"),
 }
 
 
@@ -58,11 +61,14 @@ def configure(**kwargs: Any) -> None:
       when a proof fails (default ``False``).
     - ``log_level`` (str): Python logging level for the ``provably`` logger
       (default ``"WARNING"``).
+    - ``cache_dir`` (str | None): Directory for disk-persistent proof cache.
+      Default: ``~/.provably/cache``. Set to ``None`` to disable disk caching.
+      Proofs are persisted across process restarts — no re-proving on import.
 
     Example::
 
         from provably import configure
-        configure(timeout_ms=10_000, raise_on_failure=True)
+        configure(timeout_ms=10_000, cache_dir=".provably_cache")
 
     Args:
         **kwargs: Key-value pairs to update in the global config.
@@ -214,14 +220,18 @@ class ProofCertificate:
 
 
 # ---------------------------------------------------------------------------
-# Proof cache (content-addressed by source + contract hash)
+# Proof cache (content-addressed, memory + optional disk persistence)
 # ---------------------------------------------------------------------------
 
 _proof_cache: dict[str, ProofCertificate] = {}
 
 
 def clear_cache() -> None:
-    """Clear the global proof cache."""
+    """Clear the in-memory proof cache.
+
+    Does **not** delete disk-cached proofs. To clear disk cache, delete
+    the directory set via ``configure(cache_dir=...)``.
+    """
     _proof_cache.clear()
 
 
@@ -237,6 +247,43 @@ def _contract_sig(fn: Callable[..., Any] | None) -> str:
         return hashlib.sha256(fn.__code__.co_code).hexdigest()[:12]
     except AttributeError:
         return repr(fn)
+
+
+def _disk_cache_path(cache_key: str) -> Path | None:
+    """Return the disk cache file path for a key, or None if disk cache disabled."""
+    cache_dir = _config.get("cache_dir")
+    if cache_dir is None:
+        return None
+    p = Path(cache_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    return p / f"{cache_key}.json"
+
+
+def _load_from_disk(cache_key: str) -> ProofCertificate | None:
+    """Try to load a cached proof from disk. Returns None on miss or error."""
+    path = _disk_cache_path(cache_key)
+    if path is None or not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        cert = ProofCertificate.from_json(data)
+        _proof_cache[cache_key] = cert  # warm the memory cache
+        return cert
+    except Exception:
+        return None
+
+
+def _save_to_disk(cache_key: str, cert: ProofCertificate) -> None:
+    """Persist a proof certificate to disk (atomic write)."""
+    path = _disk_cache_path(cache_key)
+    if path is None:
+        return
+    try:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cert.to_json(), separators=(",", ":")))
+        tmp.replace(path)  # atomic on POSIX
+    except Exception:
+        pass  # disk cache is best-effort
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +386,9 @@ def verify_function(
     cache_key = _source_hash(source + _contract_sig(pre) + _contract_sig(post))
     if cache_key in _proof_cache:
         return _proof_cache[cache_key]
+    disk_hit = _load_from_disk(cache_key)
+    if disk_hit is not None:
+        return disk_hit
 
     # Parse AST
     tree = ast.parse(source)
@@ -524,6 +574,7 @@ def verify_function(
         )
 
     _proof_cache[cache_key] = cert
+    _save_to_disk(cache_key, cert)
     return cert
 
 
