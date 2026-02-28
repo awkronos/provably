@@ -26,12 +26,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["z3-solver>=4.12"]
 
 [project.optional-dependencies]
-z3 = ["z3-solver>=4.12"]
 dev = [
-    "z3-solver>=4.12",
     "pytest>=8.0",
     "pytest-cov>=6.0",
     "pytest-timeout>=2.2",

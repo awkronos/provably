@@ -19,13 +19,9 @@ from __future__ import annotations
 
 from typing import Annotated, Any, get_args, get_origin
 
-try:
-    import z3
+import z3
 
-    HAS_Z3 = True
-except ImportError:
-    z3 = None  # type: ignore[assignment]
-    HAS_Z3 = False
+HAS_Z3 = True  # z3-solver is a hard dependency
 
 
 # ---------------------------------------------------------------------------
@@ -49,9 +45,6 @@ def python_type_to_z3_sort(typ: type) -> Any:
         RuntimeError: If z3-solver is not installed.
         TypeError: If no Z3 sort exists for the given type.
     """
-    if not HAS_Z3:
-        raise RuntimeError("z3-solver is required for type mapping")
-
     origin = get_origin(typ)
     if origin is Annotated:
         return python_type_to_z3_sort(get_args(typ)[0])
@@ -82,9 +75,6 @@ def make_z3_var(name: str, typ: type) -> Any:
         RuntimeError: If z3-solver is not installed.
         TypeError: If the type cannot be mapped to a Z3 sort.
     """
-    if not HAS_Z3:
-        raise RuntimeError("z3-solver is required")
-
     sort = python_type_to_z3_sort(typ)
     if sort == z3.IntSort():
         return z3.Int(name)
@@ -225,9 +215,6 @@ def extract_refinements(typ: type, var: Any) -> list[Any]:
         A list of ``z3.BoolRef`` constraints. Empty if z3 is not
         installed or if *typ* is not ``Annotated``.
     """
-    if not HAS_Z3:
-        return []
-
     origin = get_origin(typ)
     if origin is not Annotated:
         return []
@@ -255,7 +242,7 @@ def extract_refinements(typ: type, var: Any) -> list[Any]:
             # Custom predicate callable (but not a bare type like float/int)
             try:
                 result = marker(var)
-                if HAS_Z3 and isinstance(result, z3.BoolRef):
+                if isinstance(result, z3.BoolRef):
                     constraints.append(result)
             except (TypeError, Exception):
                 pass  # Not a valid constraint callable

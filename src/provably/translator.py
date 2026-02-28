@@ -27,13 +27,9 @@ import ast
 from dataclasses import dataclass, field
 from typing import Any
 
-try:
-    import z3
+import z3
 
-    HAS_Z3 = True
-except ImportError:
-    z3 = None  # type: ignore[assignment]  # noqa: N816
-    HAS_Z3 = False
+HAS_Z3 = True  # z3-solver is a hard dependency
 
 # Maximum number of iterations for ``for i in range(N)`` unrolling.
 _MAX_UNROLL = 256
