@@ -4,7 +4,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/provably?color=blue)](https://pypi.org/project/provably/)
 [![Python versions](https://img.shields.io/pypi/pyversions/provably)](https://pypi.org/project/provably/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![CI](https://github.com/awkronos/provably/actions/workflows/ci.yml/badge.svg)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
 [![Typed](https://img.shields.io/badge/types-mypy%20strict-blue)](https://mypy.readthedocs.io/)
 [![Docs](https://img.shields.io/badge/docs-awkronos.github.io-blue)](https://awkronos.github.io/provably/)
@@ -145,4 +145,4 @@ input satisfying the precondition — not just the inputs you happened to test.
 - [Getting started](https://awkronos.github.io/provably/getting-started/)
 - [API reference](https://awkronos.github.io/provably/api/decorators/)
 - [Changelog](CHANGELOG.md)
-- [License](LICENSE) (Apache-2.0)
+- [License](LICENSE) (MIT)
