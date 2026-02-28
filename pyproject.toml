@@ -1,0 +1,124 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "provably"
+version = "0.1.0"
+description = "Proof-carrying Python functions via Z3 — annotate, verify, ship."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Kagami", email = "kagami@7331.dev" },
+]
+keywords = ["formal-verification", "z3", "contracts", "refinement-types", "static-analysis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+z3 = ["z3-solver>=4.12"]
+dev = [
+    "z3-solver>=4.12",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "hypothesis>=6.100",
+    "mypy>=1.9",
+    "ruff>=0.4",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+    "mkdocs-autorefs>=1.0",
+]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+    "mkdocs-autorefs>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/kagami-dev/provably"
+Documentation = "https://kagami-dev.github.io/provably"
+Repository = "https://github.com/kagami-dev/provably"
+"Bug Tracker" = "https://github.com/kagami-dev/provably/issues"
+Changelog = "https://github.com/kagami-dev/provably/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/LICENSE",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/pyproject.toml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/provably"]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+src = ["src"]
+line-length = 99
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "TID"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # allow assert in tests
+
+# ---------------------------------------------------------------------------
+# Mypy
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = "z3.*"
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+
+[tool.coverage.run]
+source = ["src/provably"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if HAS_Z3:",
+    "raise NotImplementedError",
+]

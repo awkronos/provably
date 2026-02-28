@@ -1,0 +1,108 @@
+site_name: Provably
+site_description: Proof-carrying Python functions via Z3
+site_url: https://awkronos.github.io/provably
+repo_url: https://github.com/awkronos/provably
+repo_name: awkronos/provably
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - toc.integrate
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_category_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            docstring_style: google
+            merge_init_into_class: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/awkronos/provably
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Concepts:
+      - How It Works: concepts/how-it-works.md
+      - Refinement Types: concepts/refinement-types.md
+      - Contracts: concepts/contracts.md
+      - Compositionality: concepts/compositionality.md
+      - Soundness: concepts/soundness.md
+  - Guides:
+      - Supported Python: guides/supported-python.md
+      - Pytest Integration: guides/pytest.md
+      - Errors and Debugging: guides/errors.md
+  - API Reference:
+      - provably.decorators: api/decorators.md
+      - provably.types: api/types.md
+      - provably.engine: api/engine.md
+  - Changelog: changelog.md
