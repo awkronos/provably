@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/provably?color=gold&labelColor=0a0a0f)](https://pypi.org/project/provably/)
 [![Python versions](https://img.shields.io/pypi/pyversions/provably?labelColor=0a0a0f)](https://pypi.org/project/provably/)
 [![License](https://img.shields.io/badge/license-MIT-green?labelColor=0a0a0f)](LICENSE)
-[![CI](https://github.com/awkronos/provably/actions/workflows/ci.yml/badge.svg)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/awkronos/provably/ci.yml?label=CI&labelColor=0a0a0f)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen?labelColor=0a0a0f)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
 [![Typed](https://img.shields.io/badge/types-mypy%20strict-blue?labelColor=0a0a0f)](https://mypy.readthedocs.io/)
 [![Docs](https://img.shields.io/badge/docs-awkronos.github.io-blue?labelColor=0a0a0f)](https://awkronos.github.io/provably/)

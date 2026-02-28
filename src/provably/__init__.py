@@ -18,7 +18,7 @@ Annotate functions with contracts, get automatic formal proofs.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from z3 import And, Implies, Not, Or
 
