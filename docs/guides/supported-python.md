@@ -79,7 +79,7 @@ Chained comparisons (`0 <= x <= 1`) are supported and desugared to `0 <= x and x
 ### Calls to verified functions
 
 Calls to functions listed in `contracts=` are supported. See
-[Compositionality](compositionality.md).
+[Compositionality](../concepts/compositionality.md).
 
 ---
 

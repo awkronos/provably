@@ -32,25 +32,25 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
-from .decorators import verified, VerificationError, runtime_checked, ContractViolationError
+from .decorators import ContractViolationError, VerificationError, runtime_checked, verified
 from .engine import (
     ProofCertificate,
     Status,
-    verify_function,
-    verify_module,
     clear_cache,
     configure,
+    verify_function,
+    verify_module,
 )
-from .translator import TranslationError, HAS_Z3
+from .translator import HAS_Z3, TranslationError
 from .types import (
-    Gt,
-    Ge,
-    Lt,
-    Le,
     Between,
+    Ge,
+    Gt,
+    Le,
+    Lt,
+    NonNegative,
     NotEq,
     Positive,
-    NonNegative,
     UnitInterval,
 )
 
@@ -58,32 +58,20 @@ from .types import (
 # When Z3 is not installed, each function raises an informative error
 # that suggests the correct install command.
 if HAS_Z3:
-    from z3 import And, Or, Not, Implies
+    from z3 import And, Implies, Not, Or
 else:
 
-    def And(*args):  # type: ignore[misc]
-        raise RuntimeError(
-            "z3-solver is not installed. "
-            "Run: pip install 'provably[z3]'"
-        )
+    def And(*args: object) -> None:  # noqa: N802
+        raise RuntimeError("z3-solver is not installed. Run: pip install 'provably[z3]'")
 
-    def Or(*args):  # type: ignore[misc]
-        raise RuntimeError(
-            "z3-solver is not installed. "
-            "Run: pip install 'provably[z3]'"
-        )
+    def Or(*args: object) -> None:  # noqa: N802
+        raise RuntimeError("z3-solver is not installed. Run: pip install 'provably[z3]'")
 
-    def Not(x):  # type: ignore[misc]
-        raise RuntimeError(
-            "z3-solver is not installed. "
-            "Run: pip install 'provably[z3]'"
-        )
+    def Not(x: object) -> None:  # noqa: N802
+        raise RuntimeError("z3-solver is not installed. Run: pip install 'provably[z3]'")
 
-    def Implies(a, b):  # type: ignore[misc]
-        raise RuntimeError(
-            "z3-solver is not installed. "
-            "Run: pip install 'provably[z3]'"
-        )
+    def Implies(a: object, b: object) -> None:  # noqa: N802
+        raise RuntimeError("z3-solver is not installed. Run: pip install 'provably[z3]'")
 
 
 __all__ = [

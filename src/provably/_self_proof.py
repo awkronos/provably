@@ -103,7 +103,8 @@ def identity(x: float) -> float:
 )
 def negate_negate(x: float) -> float:
     """negate_negate(x): double negation is identity."""
-    return -(-x)
+    neg = -x
+    return -neg
 
 
 @verified(

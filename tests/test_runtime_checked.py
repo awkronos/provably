@@ -12,7 +12,6 @@ from provably.decorators import (
     runtime_checked,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pre-condition violation
 # ---------------------------------------------------------------------------
@@ -22,7 +21,7 @@ class TestPreConditionViolation:
     def test_pre_violation_raises(self) -> None:
         @runtime_checked(pre=lambda x: x >= 0)
         def sqrt_floor(x: float) -> float:
-            return x ** 0.5
+            return x**0.5
 
         with pytest.raises(ContractViolationError) as exc_info:
             sqrt_floor(-1.0)
@@ -291,6 +290,7 @@ class TestVerifiedWithCheckContracts:
     def test_check_contracts_on_verified(self) -> None:
         """@verified(check_contracts=True) adds runtime checking on top of static proof."""
         from conftest import requires_z3
+
         pytest.importorskip("z3")
 
         from provably.decorators import verified

@@ -17,7 +17,7 @@ These compose with other annotations::
 
 from __future__ import annotations
 
-from typing import Any, get_args, get_origin, Annotated
+from typing import Annotated, Any, get_args, get_origin
 
 try:
     import z3
@@ -31,6 +31,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Python type → Z3 sort
 # ---------------------------------------------------------------------------
+
 
 def python_type_to_z3_sort(typ: type) -> Any:
     """Map a Python type annotation to a Z3 sort.
@@ -100,6 +101,7 @@ def make_z3_var(name: str, typ: type) -> Any:
 #   x: Annotated[float, Ge(0), Le(1)]   →   0 ≤ x ≤ 1
 #   x: Annotated[int, Between(1, 100)]  →   1 ≤ x ≤ 100
 # ---------------------------------------------------------------------------
+
 
 class Gt:
     """Strictly greater than a bound.

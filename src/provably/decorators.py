@@ -46,9 +46,10 @@ import functools
 import inspect
 import logging
 import warnings
-from typing import Any, Callable, TypeVar, overload
+from collections.abc import Callable
+from typing import Any, TypeVar, overload
 
-from .engine import ProofCertificate, Status, verify_function, _config
+from .engine import ProofCertificate, Status, _config, verify_function
 
 logger = logging.getLogger("provably")
 
@@ -90,16 +91,14 @@ class ContractViolationError(Exception):
         if kind == "pre":
             msg = f"Precondition violated for '{func_name}' with args {args_}"
         else:
-            msg = (
-                f"Postcondition violated for '{func_name}' with args {args_},"
-                f" result={result!r}"
-            )
+            msg = f"Postcondition violated for '{func_name}' with args {args_}, result={result!r}"
         super().__init__(msg)
 
 
 # ---------------------------------------------------------------------------
 # Runtime contract validation helpers
 # ---------------------------------------------------------------------------
+
 
 def _check_contract_arity(
     fn: Callable[..., Any],
@@ -120,16 +119,15 @@ def _check_contract_arity(
     except (ValueError, TypeError):
         return
 
-    has_varargs = any(
-        p.kind == inspect.Parameter.VAR_POSITIONAL
-        for p in sig.parameters.values()
-    )
+    has_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values())
     if has_varargs:
         return
 
     params = [
-        p for p in sig.parameters.values()
-        if p.kind not in (
+        p
+        for p in sig.parameters.values()
+        if p.kind
+        not in (
             inspect.Parameter.VAR_POSITIONAL,
             inspect.Parameter.VAR_KEYWORD,
         )
@@ -145,6 +143,7 @@ def _check_contract_arity(
 # ---------------------------------------------------------------------------
 # @verified decorator
 # ---------------------------------------------------------------------------
+
 
 @overload
 def verified(func: F) -> F: ...
@@ -173,7 +172,7 @@ def verified(
     timeout_ms: int | None = None,
     contracts: dict[str, dict[str, Any]] | None = None,
     check_contracts: bool = False,
-) -> "F | Callable[[F], F]":
+) -> F | Callable[[F], F]:
     """Decorator that formally verifies a Python function using Z3.
 
     Args:
@@ -356,13 +355,14 @@ def _verify_and_wrap(
 # @runtime_checked decorator
 # ---------------------------------------------------------------------------
 
+
 def runtime_checked(
     func: F | None = None,
     *,
     pre: Callable[..., Any] | None = None,
     post: Callable[..., Any] | None = None,
     raise_on_failure: bool = True,
-) -> "F | Callable[[F], F]":
+) -> F | Callable[[F], F]:
     """Decorator that checks pre/post contracts at runtime without Z3.
 
     Unlike :func:`verified`, this decorator does not perform a static proof.
@@ -426,6 +426,7 @@ def _runtime_wrap(
         _check_contract_arity(post, n_params + 1, "post", fname)
 
     if inspect.iscoroutinefunction(func):
+
         @functools.wraps(func)
         async def async_checked_wrapper(*args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
             if pre is not None:

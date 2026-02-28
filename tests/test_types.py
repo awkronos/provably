@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Annotated
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
@@ -13,17 +12,16 @@ pytestmark = requires_z3
 import z3
 
 from provably.types import (
-    python_type_to_z3_sort,
-    make_z3_var,
-    extract_refinements,
-    Gt,
-    Ge,
-    Lt,
-    Le,
     Between,
+    Ge,
+    Gt,
+    Le,
+    Lt,
     NotEq,
+    extract_refinements,
+    make_z3_var,
+    python_type_to_z3_sort,
 )
-
 
 # ---------------------------------------------------------------------------
 # python_type_to_z3_sort

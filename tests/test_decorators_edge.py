@@ -5,7 +5,6 @@ from __future__ import annotations
 import warnings
 
 import pytest
-
 from conftest import requires_z3
 
 from provably.decorators import (
@@ -15,7 +14,6 @@ from provably.decorators import (
     verified,
 )
 from provably.engine import Status, clear_cache, configure
-
 
 # ---------------------------------------------------------------------------
 # Async functions → SKIPPED
@@ -41,6 +39,7 @@ def test_async_function_gets_skipped_cert() -> None:
 @requires_z3
 def test_per_function_timeout() -> None:
     """A 1ms timeout on a complex function should yield UNKNOWN (or VERIFIED on fast machines)."""
+
     @verified(timeout_ms=1, post=lambda x, result: result >= 0)
     def abs_val(x: float) -> float:
         if x >= 0:
@@ -62,6 +61,7 @@ def test_per_function_timeout() -> None:
 def test_raise_on_failure_true() -> None:
     """raise_on_failure=True raises VerificationError on counterexample."""
     with pytest.raises(VerificationError) as exc_info:
+
         @verified(raise_on_failure=True, post=lambda x, result: result > 0)
         def negate(x: float) -> float:
             return -x
@@ -73,6 +73,7 @@ def test_raise_on_failure_true() -> None:
 @requires_z3
 def test_raise_on_failure_false_no_exception() -> None:
     """raise_on_failure=False (default) does not raise on counterexample."""
+
     # Should not raise — proof will DISPROVE but no exception
     @verified(raise_on_failure=False, post=lambda x, result: result > 0)
     def negate(x: float) -> float:
@@ -167,6 +168,7 @@ def test_configure_affects_timeout() -> None:
     """configure(timeout_ms=1) is used when no per-call override is given."""
     configure(timeout_ms=1)
     try:
+
         @verified(post=lambda x, result: result >= 0)
         def abs_val(x: float) -> float:
             if x >= 0:
@@ -187,6 +189,7 @@ def test_configure_affects_raise_on_failure() -> None:
     configure(raise_on_failure=True)
     try:
         with pytest.raises(VerificationError):
+
             @verified(post=lambda x, result: result > 0)
             def bad(x: float) -> float:
                 return -x
@@ -236,6 +239,7 @@ def test_verified_preserves_return_value() -> None:
 @requires_z3
 def test_async_contract_dict_structure() -> None:
     """Async functions also get __contract__ attached."""
+
     @verified(pre=lambda x: x >= 0)
     async def async_fn(x: float) -> float:
         return x
@@ -255,6 +259,7 @@ def test_async_contract_dict_structure() -> None:
 @requires_z3
 def test_verification_error_carries_certificate() -> None:
     with pytest.raises(VerificationError) as exc_info:
+
         @verified(raise_on_failure=True, post=lambda x, result: result > 100)
         def f(x: float) -> float:
             return x

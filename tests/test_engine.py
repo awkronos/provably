@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
 
-from provably.engine import Status, verify_function, clear_cache, ProofCertificate
+from provably.engine import ProofCertificate, Status, clear_cache, verify_function
 
 
 @pytest.fixture(autouse=True)
@@ -110,7 +109,7 @@ class TestVerified:
 
     def test_square_nonneg(self) -> None:
         def square(x: int) -> int:
-            return x ** 2
+            return x**2
 
         cert = verify_function(square, post=lambda x, r: r >= 0)
         assert cert.verified

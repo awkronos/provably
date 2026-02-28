@@ -23,18 +23,16 @@ import textwrap
 import warnings
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
 
 import z3
 
-from provably import verified, verify_function, clear_cache, configure
+from provably import clear_cache, configure, verified, verify_function
+from provably.decorators import ContractViolationError, runtime_checked
 from provably.engine import ProofCertificate, Status
-from provably.translator import Translator, TranslationError
-from provably.decorators import runtime_checked, ContractViolationError
-
+from provably.translator import TranslationError, Translator
 
 # ---------------------------------------------------------------------------
 # Translator: uncovered expression/statement branches

@@ -6,15 +6,13 @@ import ast
 import textwrap
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
 
 import z3
 
-from provably.translator import Translator, TranslationError
-
+from provably.translator import TranslationError, Translator
 
 # ---------------------------------------------------------------------------
 # Helpers

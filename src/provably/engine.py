@@ -26,13 +26,14 @@ import hashlib
 import inspect
 import textwrap
 import time
+import types as _types
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, get_type_hints
-import types as _types
+from typing import Any, get_type_hints
 
-from .translator import Translator, TranslationError, HAS_Z3
-from .types import make_z3_var, extract_refinements
+from .translator import HAS_Z3, TranslationError, Translator
+from .types import extract_refinements, make_z3_var
 
 if HAS_Z3:
     import z3
@@ -78,12 +79,16 @@ def configure(**kwargs: Any) -> None:
 
     if "log_level" in kwargs:
         import logging
-        logging.getLogger("provably").setLevel(getattr(logging, kwargs["log_level"], logging.WARNING))
+
+        logging.getLogger("provably").setLevel(
+            getattr(logging, kwargs["log_level"], logging.WARNING)
+        )
 
 
 # ---------------------------------------------------------------------------
 # Status + ProofCertificate
 # ---------------------------------------------------------------------------
+
 
 class Status(Enum):
     """Verification result status."""
@@ -178,7 +183,7 @@ class ProofCertificate:
         }
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "ProofCertificate":
+    def from_json(cls, data: dict[str, Any]) -> ProofCertificate:
         """Deserialize a certificate from a JSON-compatible dict.
 
         This is the inverse of :meth:`to_json`.
@@ -240,6 +245,7 @@ def _contract_sig(fn: Callable[..., Any] | None) -> str:
 # Contract argument count validation
 # ---------------------------------------------------------------------------
 
+
 def _validate_contract_arity(
     fn: Callable[..., Any],
     expected_args: int,
@@ -265,17 +271,16 @@ def _validate_contract_arity(
         return None  # can't inspect — let Z3 catch it
 
     params = [
-        p for p in sig.parameters.values()
-        if p.kind not in (
+        p
+        for p in sig.parameters.values()
+        if p.kind
+        not in (
             inspect.Parameter.VAR_POSITIONAL,
             inspect.Parameter.VAR_KEYWORD,
         )
     ]
     # If there are *args the callable is variadic — skip check
-    has_varargs = any(
-        p.kind == inspect.Parameter.VAR_POSITIONAL
-        for p in sig.parameters.values()
-    )
+    has_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values())
     if has_varargs:
         return None
 
@@ -290,6 +295,7 @@ def _validate_contract_arity(
 # ---------------------------------------------------------------------------
 # Main verification entry point
 # ---------------------------------------------------------------------------
+
 
 def verify_function(
     func: Callable[..., Any],
@@ -325,10 +331,7 @@ def verify_function(
             status=Status.SKIPPED,
             preconditions=(),
             postconditions=(),
-            message=(
-                "z3-solver not installed. "
-                "Run: pip install 'provably[z3]'"
-            ),
+            message=("z3-solver not installed. Run: pip install 'provably[z3]'"),
         )
 
     # Get source
@@ -540,7 +543,8 @@ def verify_function(
 # Module-level batch verification
 # ---------------------------------------------------------------------------
 
-def verify_module(module: "_types.ModuleType") -> dict[str, ProofCertificate]:
+
+def verify_module(module: _types.ModuleType) -> dict[str, ProofCertificate]:
     """Find all ``@verified`` functions in a module and return their certificates.
 
     Walks the module's namespace looking for callables that have a
@@ -579,6 +583,7 @@ def verify_module(module: "_types.ModuleType") -> dict[str, ProofCertificate]:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _extract_counterexample(
     model: Any,
     param_vars: dict[str, Any],
@@ -598,7 +603,7 @@ def _z3_val_to_python(val: Any) -> int | float | bool | str:
     """Convert a Z3 value to a Python scalar."""
     try:
         if z3.is_int_value(val):
-            return val.as_long()
+            return int(val.as_long())
         if z3.is_rational_value(val):
             return float(val.as_fraction())
         if z3.is_true(val):
@@ -634,7 +639,7 @@ def _resolve_closure_vars(
     # Closure cells (higher priority — override globals)
     freevars = getattr(getattr(func, "__code__", None), "co_freevars", ())
     cells = getattr(func, "__closure__", None) or ()
-    for name, cell in zip(freevars, cells):
+    for name, cell in zip(freevars, cells, strict=False):
         try:
             lookup[name] = cell.cell_contents
         except ValueError:

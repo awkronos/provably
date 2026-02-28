@@ -10,14 +10,13 @@ import ast
 import textwrap
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
 
 import z3
 
-from provably.translator import Translator, TranslationError
+from provably.translator import TranslationError, Translator
 
 
 def _parse_func(source: str) -> ast.FunctionDef:
@@ -367,10 +366,12 @@ def f(x):
         expr = _translate(src, {"x": x})
         # Equivalent to abs(x)
         s = z3.Solver()
-        s.add(z3.Or(
-            z3.And(x == -3, expr != 3),
-            z3.And(x == 5, expr != 5),
-        ))
+        s.add(
+            z3.Or(
+                z3.And(x == -3, expr != 3),
+                z3.And(x == 5, expr != 5),
+            )
+        )
         assert s.check() == z3.unsat
 
     def test_if_elif_else(self) -> None:
@@ -403,10 +404,12 @@ def f(x):
         expr = _translate(src, {"x": x})
         # Should be max(x, 0)
         s = z3.Solver()
-        s.add(z3.Or(
-            z3.And(x == -5, expr != 0),
-            z3.And(x == 5, expr != 5),
-        ))
+        s.add(
+            z3.Or(
+                z3.And(x == -5, expr != 0),
+                z3.And(x == 5, expr != 5),
+            )
+        )
         assert s.check() == z3.unsat
 
     def test_if_no_else_with_remainder(self) -> None:

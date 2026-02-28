@@ -7,21 +7,19 @@ import json
 import textwrap
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
 
 import z3
 
-from provably import verified, verify_function, clear_cache, configure
+from provably import clear_cache, configure, verified, verify_function
 from provably.engine import (
     ProofCertificate,
     Status,
     verify_module,
 )
-from provably.translator import Translator, TranslationError
-
+from provably.translator import TranslationError, Translator
 
 # ---------------------------------------------------------------------------
 # Engine: to_json / from_json round-trip
@@ -106,6 +104,7 @@ class TestVerifyModule:
 class TestConfigureIntegration:
     def test_configure_timeout(self) -> None:
         configure(timeout_ms=10000)
+
         # Verify it doesn't crash with the new timeout
         def f(x: float) -> float:
             return x

@@ -6,14 +6,13 @@ import asyncio
 from typing import Annotated
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
 
-from provably import verified, Status, VerificationError, clear_cache
+from provably import Status, VerificationError, clear_cache, verified
 from provably.engine import verify_function
-from provably.types import Ge, Le, Between
+from provably.types import Between, Ge, Le
 
 
 @pytest.fixture(autouse=True)

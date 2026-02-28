@@ -32,7 +32,7 @@ try:
 
     HAS_Z3 = True
 except ImportError:
-    z3 = None  # type: ignore[assignment]
+    z3 = None  # type: ignore[assignment]  # noqa: N816
     HAS_Z3 = False
 
 # Maximum number of iterations for ``for i in range(N)`` unrolling.
@@ -57,6 +57,7 @@ class TranslationResult:
 # Built-in function translations
 # ---------------------------------------------------------------------------
 
+
 def _z3_min(a: Any, b: Any) -> Any:
     return z3.If(a <= b, a, b)
 
@@ -79,6 +80,7 @@ _BUILTINS: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 # Translator
 # ---------------------------------------------------------------------------
+
 
 class Translator:
     """Translates a Python function AST into Z3 constraints.
@@ -142,9 +144,7 @@ class Translator:
     # Statement translation
     # ------------------------------------------------------------------
 
-    def _block(
-        self, stmts: list[ast.stmt], env: dict[str, Any]
-    ) -> tuple[dict[str, Any], Any]:
+    def _block(self, stmts: list[ast.stmt], env: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         """Translate a block. Returns (env, return_expr | None)."""
         for i, stmt in enumerate(stmts):
             if isinstance(stmt, ast.Return):
@@ -172,9 +172,7 @@ class Translator:
 
             elif isinstance(stmt, ast.Expr):
                 # Skip docstrings and other string-constant expressions
-                if isinstance(stmt.value, ast.Constant) and isinstance(
-                    stmt.value.value, str
-                ):
+                if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
                     pass
                 else:
                     self._expr(stmt.value, env)  # side-effect only
@@ -186,7 +184,7 @@ class Translator:
                 )
         return env, None
 
-    def _do_assign(self, stmt: ast.Assign | ast.AnnAssign, env: dict) -> dict:
+    def _do_assign(self, stmt: ast.Assign | ast.AnnAssign, env: dict[str, Any]) -> dict[str, Any]:
         if isinstance(stmt, ast.AnnAssign):
             if stmt.value is None:
                 return env
@@ -197,7 +195,7 @@ class Translator:
                     f"Multiple assignment targets not supported"
                     f" (line {getattr(stmt, 'lineno', '?')})"
                 )
-            target = stmt.targets[0]
+            target = stmt.targets[0]  # type: ignore[assignment]
 
         val = self._expr(stmt.value, env)  # type: ignore[arg-type]
         if isinstance(target, ast.Name):
@@ -207,7 +205,7 @@ class Translator:
             f" (line {getattr(stmt, 'lineno', '?')})"
         )
 
-    def _do_aug_assign(self, stmt: ast.AugAssign, env: dict) -> dict:
+    def _do_aug_assign(self, stmt: ast.AugAssign, env: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(stmt.target, ast.Name):
             raise TranslationError(
                 f"Unsupported aug-assign target: {type(stmt.target).__name__}"
@@ -216,8 +214,7 @@ class Translator:
         name = stmt.target.id
         if name not in env:
             raise TranslationError(
-                f"Undefined variable in aug-assign: {name}"
-                f" (line {getattr(stmt, 'lineno', '?')})"
+                f"Undefined variable in aug-assign: {name} (line {getattr(stmt, 'lineno', '?')})"
             )
         current = env[name]
         delta = self._expr(stmt.value, env)
@@ -281,15 +278,11 @@ class Translator:
             and isinstance(stmt.iter.func, ast.Name)
             and stmt.iter.func.id == "range"
         ):
-            raise TranslationError(
-                f"Only 'for i in range(N)' loops are supported (line {lineno})"
-            )
+            raise TranslationError(f"Only 'for i in range(N)' loops are supported (line {lineno})")
 
         range_args = stmt.iter.args
         if len(range_args) not in (1, 2, 3):
-            raise TranslationError(
-                f"range() requires 1–3 arguments (line {lineno})"
-            )
+            raise TranslationError(f"range() requires 1–3 arguments (line {lineno})")
 
         def _resolve_int(node: ast.expr) -> int:
             """Resolve a constant integer from an AST node."""
@@ -299,10 +292,8 @@ class Translator:
                 # Try closure vars
                 cv = self.closure_vars.get(node.id)
                 if cv is not None and z3.is_int_value(cv):
-                    return cv.as_long()
-            raise TranslationError(
-                f"For-loop bound must be a constant integer (line {lineno})"
-            )
+                    return int(cv.as_long())
+            raise TranslationError(f"For-loop bound must be a constant integer (line {lineno})")
 
         if len(range_args) == 1:
             start, stop, step = 0, _resolve_int(range_args[0]), 1
@@ -316,9 +307,7 @@ class Translator:
             step = _resolve_int(range_args[2])
 
         if step == 0:
-            raise TranslationError(
-                f"For-loop step cannot be zero (line {lineno})"
-            )
+            raise TranslationError(f"For-loop step cannot be zero (line {lineno})")
 
         iterations = list(range(start, stop, step))
         if len(iterations) > _MAX_UNROLL:
@@ -328,9 +317,7 @@ class Translator:
             )
 
         if stmt.orelse:
-            self._warnings.append(
-                f"For-loop else clause ignored (line {lineno})"
-            )
+            self._warnings.append(f"For-loop else clause ignored (line {lineno})")
 
         for i_val in iterations:
             env = {**env, loop_var: z3.IntVal(i_val)}
@@ -364,8 +351,7 @@ class Translator:
             if node.id == "False":
                 return z3.BoolVal(False)
             raise TranslationError(
-                f"Undefined variable: {node.id}"
-                f" (line {getattr(node, 'lineno', '?')})"
+                f"Undefined variable: {node.id} (line {getattr(node, 'lineno', '?')})"
             )
 
         if isinstance(node, ast.BinOp):
@@ -408,8 +394,7 @@ class Translator:
             )
 
         raise TranslationError(
-            f"Unsupported expression: {type(node).__name__}"
-            f" (line {getattr(node, 'lineno', '?')})"
+            f"Unsupported expression: {type(node).__name__} (line {getattr(node, 'lineno', '?')})"
         )
 
     def _constant(self, value: Any) -> Any:
@@ -460,18 +445,14 @@ class Translator:
         if z3.is_int_value(exp):
             n = exp.as_long()
             if n == 0:
-                return (
-                    z3.RealVal("1") if base.sort() == z3.RealSort() else z3.IntVal(1)
-                )
+                return z3.RealVal("1") if base.sort() == z3.RealSort() else z3.IntVal(1)
             if n == 1:
                 return base
             if n == 2:
                 return base * base
             if n == 3:
                 return base * base * base
-        raise TranslationError(
-            "Only constant integer exponents 0–3 supported for **"
-        )
+        raise TranslationError("Only constant integer exponents 0–3 supported for **")
 
     def _unaryop(self, op: ast.unaryop, operand: Any) -> Any:
         if isinstance(op, ast.USub):
@@ -482,11 +463,11 @@ class Translator:
             return operand
         raise TranslationError(f"Unsupported unary op: {type(op).__name__}")
 
-    def _compare(self, node: ast.Compare, env: dict) -> Any:
+    def _compare(self, node: ast.Compare, env: dict[str, Any]) -> Any:
         """Translate comparisons, including chained (a < b < c)."""
         left = self._expr(node.left, env)
         parts: list[Any] = []
-        for op, comp_node in zip(node.ops, node.comparators):
+        for op, comp_node in zip(node.ops, node.comparators, strict=False):
             right = self._expr(comp_node, env)
             lc, rc = self._coerce(left, right)
             if isinstance(op, ast.Lt):
@@ -511,7 +492,7 @@ class Translator:
             return parts[0]
         return z3.And(*parts)
 
-    def _call(self, node: ast.Call, env: dict) -> Any:
+    def _call(self, node: ast.Call, env: dict[str, Any]) -> Any:
         """Translate a function call."""
         if not isinstance(node.func, ast.Name):
             raise TranslationError(

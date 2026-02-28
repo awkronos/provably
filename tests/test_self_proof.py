@@ -7,23 +7,22 @@ own builtins, the system is unsound.
 from __future__ import annotations
 
 import pytest
-
 from conftest import requires_z3
 
 pytestmark = requires_z3
 
 from provably._self_proof import (
     SELF_PROOFS,
-    _z3_min,
-    _z3_max,
     _z3_abs,
-    clamp,
-    relu,
+    _z3_max,
+    _z3_min,
     bounded_increment,
-    safe_divide,
+    clamp,
     identity,
-    negate_negate,
     max_of_abs,
+    negate_negate,
+    relu,
+    safe_divide,
 )
 from provably.engine import Status
 
