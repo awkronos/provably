@@ -31,7 +31,7 @@ Everything outside the TCB -- decorator wrapper, `ProofCertificate`, caching,
 `verify_module`, `@runtime_checked` -- cannot produce a spurious `verified=True`.
 
 !!! proof "Self-verification"
-    The [strange loop](../self-proof.md) exercises the TCB on functions it will later
+    The [self-verification tests](../self-proof.md) exercise the TCB on functions it will later
     verify. Translator regressions are caught before merge.
 
 ## Epistemological tiers

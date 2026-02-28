@@ -14,11 +14,22 @@ Annotate functions with contracts, get automatic formal proofs.
         return x * 2
 
     assert double.__proof__.verified  # Z3-proven for ALL inputs
+
+ProofCertificate extras
+-----------------------
+- ``cert.explain()`` — human-readable multi-line description of the result.
+- ``cert.to_prompt()`` — single-paragraph LLM-friendly repair message.
+
+Optional extras
+---------------
+- ``provably.hypothesis`` — Hypothesis bridge (``pip install provably[hypothesis]``).
+- ``provably.pytest_plugin`` — pytest ``--provably-report`` and ``proven`` marker
+  (auto-registered when provably is installed).
 """
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 from z3 import And, Implies, Not, Or
 

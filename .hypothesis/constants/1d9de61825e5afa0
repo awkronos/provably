@@ -1,0 +1,4 @@
+# file: /Users/schizodactyl/projects/provably/src/provably/translator.py
+# hypothesis_version: 6.139.2
+
+[256, '1', '?', 'False', 'True', 'abs', 'lineno', 'max', 'min', 'post', 'pre', 'range', 'return_sort']

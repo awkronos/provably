@@ -150,6 +150,67 @@ class ProofCertificate:
             out += f" ({self.message})"
         return out
 
+    def explain(self) -> str:
+        """Human-readable explanation of the proof result.
+
+        Returns a multi-line string describing the outcome, any counterexample
+        found, and the violated postcondition.
+
+        Example::
+
+            print(func.__proof__.explain())
+            # Q.E.D.: double
+            # or
+            # COUNTEREXAMPLE: bad_func
+            #   Counterexample: {'x': -1}
+            #   bad_func(x=-1) = -1
+            #   Postcondition: 0 <= result
+        """
+        lines = [
+            f"{'Q.E.D.' if self.verified else self.status.value.upper()}: {self.function_name}"
+        ]
+        if self.counterexample:
+            args = {k: v for k, v in self.counterexample.items() if k != "__return__"}
+            ret = self.counterexample.get("__return__")
+            lines.append(f"  Counterexample: {args}")
+            if ret is not None:
+                lines.append(
+                    f"  {self.function_name}({', '.join(f'{k}={v}' for k, v in args.items())}) = {ret}"
+                )
+            for post in self.postconditions:
+                lines.append(f"  Postcondition: {post}")
+        if self.message:
+            lines.append(f"  {self.message}")
+        return "\n".join(lines)
+
+    def to_prompt(self) -> str:
+        """Format certificate for LLM consumption in repair loops.
+
+        Returns a single-paragraph string describing the verification result
+        in a form suitable for inclusion in an LLM prompt.
+
+        Example::
+
+            prompt = func.__proof__.to_prompt()
+            # "Function `bad_func` DISPROVED. Counterexample: {'x': -1} → result=-1
+            #  Violated: 0 <= result Fix the implementation or strengthen the precondition."
+        """
+        if self.verified:
+            return (
+                f"Function `{self.function_name}` VERIFIED. "
+                "All inputs satisfying preconditions produce valid outputs."
+            )
+        if self.status == Status.COUNTEREXAMPLE:
+            args = {k: v for k, v in self.counterexample.items() if k != "__return__"}  # type: ignore[union-attr]
+            ret = self.counterexample.get("__return__")  # type: ignore[union-attr]
+            parts = [f"Function `{self.function_name}` DISPROVED."]
+            parts.append(f"Counterexample: {args} → result={ret}")
+            if self.postconditions:
+                parts.append(f"Violated: {self.postconditions[0]}")
+            parts.append("Fix the implementation or strengthen the precondition.")
+            return " ".join(parts)
+        return f"Function `{self.function_name}`: {self.status.value}. {self.message}"
+
     def to_json(self) -> dict[str, Any]:
         """Serialize the certificate to a JSON-compatible dict.
 

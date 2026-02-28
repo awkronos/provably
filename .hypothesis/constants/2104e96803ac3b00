@@ -1,0 +1,4 @@
+# file: /Users/schizodactyl/projects/provably/src/provably/pytest_plugin.py
+# hypothesis_version: 6.139.2
+
+['-', '--provably', '--provably-report', '=', 'Function', 'Q.E.D.', 'Status', '__proof__', '__return__', '_provably_session', 'markers', 'provably', 'proven', 'session', 'store_true']

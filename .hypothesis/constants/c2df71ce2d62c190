@@ -1,0 +1,4 @@
+# file: /Users/schizodactyl/projects/provably/src/provably/types.py
+# hypothesis_version: 6.139.2
+
+['bound', 'hi', 'lo', 'val']

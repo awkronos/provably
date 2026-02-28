@@ -182,4 +182,4 @@ the build breaks. See [Self-Proof](self-proof.md).
 | [Supported Python](guides/supported-python.md) | Supported and unsupported constructs |
 | [Pytest integration](guides/pytest.md) | CI assertions, `verify_module()` |
 | [Errors and debugging](guides/errors.md) | Counterexamples, `TranslationError` fixes |
-| [Self-proof](self-proof.md) | The strange loop -- provably proves itself |
+| [Self-proof](self-proof.md) | provably verifies its own functions |

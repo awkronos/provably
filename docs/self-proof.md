@@ -1,4 +1,4 @@
-# The Strange Loop
+# Self-Verification
 
 provably proves its own internal functions using its own `@verified` decorator.
 The tool that verifies code is verified by the tool.
@@ -111,4 +111,4 @@ The test asserts all 10 functions have `status == VERIFIED`. No grace period.
 - Regression safety net: any translator change that breaks a self-proof is caught before merge.
 - Concrete demonstration of what `VERIFIED` means.
 
-The strange loop is load-bearing.
+Self-verification is load-bearing.

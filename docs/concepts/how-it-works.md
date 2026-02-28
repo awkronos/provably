@@ -134,7 +134,7 @@ Cached by content hash (source + contract bytecode). `clear_cache()` forces re-v
 Everything outside the TCB (decorator plumbing, caching, `verify_module`) cannot
 produce a spurious `verified=True`.
 
-!!! theorem "The strange loop"
+!!! theorem "Self-verification"
     The self-proof module runs the entire TCB on functions it will later verify.
     If a translator regression breaks `_z3_min` or `clamp`, CI fails before merge.
     See [Self-Proof](../self-proof.md).

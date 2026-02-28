@@ -1,4 +1,4 @@
-"""provably proves itself — the strange loop.
+"""provably proves itself — self-verification.
 
 This module uses @verified to formally verify provably's own internal
 pure functions. If provably can't prove its own builtins correct,
