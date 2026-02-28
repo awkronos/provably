@@ -79,37 +79,31 @@ When a contract is wrong, Z3 produces the exact input that breaks it:
 from provably import verified
 
 @verified(
-    pre=lambda n: n >= 0,
-    post=lambda n, result: result * result == n,   # wrong: isqrt != exact sqrt
+    pre=lambda a, b: b > 0,
+    post=lambda a, b, result: result * b == a,  # wrong: floor division != exact
 )
-def bad_isqrt(n: int) -> int:
-    r = 0
-    while (r + 1) * (r + 1) <= n:
-        r += 1
-    return r
+def bad_div(a: int, b: int) -> int:
+    return a // b
 
-cert = bad_isqrt.__proof__
+cert = bad_div.__proof__
 cert.verified        # False
 cert.status          # Status.COUNTEREXAMPLE
-cert.counterexample  # {'n': 2, '__return__': 1}
-# isqrt(2) = 1, but 1*1 != 2. The contract is wrong, not the function.
+cert.counterexample  # {'a': 1, 'b': 2, '__return__': 0}
+# 1 // 2 = 0, but 0 * 2 != 1. The contract is wrong, not the function.
 ```
 
-Fix the postcondition to match what the function actually guarantees:
+Fix the postcondition to match what floor division actually guarantees:
 
 ```python
 @verified(
-    pre=lambda n: n >= 0,
-    post=lambda n, result: (result * result <= n) & (n < (result + 1) * (result + 1)),
+    pre=lambda a, b: b > 0,
+    post=lambda a, b, result: (result * b <= a) & (a < result * b + b),
 )
-def isqrt(n: int) -> int:
-    r = 0
-    while (r + 1) * (r + 1) <= n:
-        r += 1
-    return r
+def safe_div(a: int, b: int) -> int:
+    return a // b
 
-isqrt.__proof__.verified  # True
-str(isqrt.__proof__)      # "[Q.E.D.] isqrt"
+safe_div.__proof__.verified  # True
+str(safe_div.__proof__)      # "[Q.E.D.] safe_div"
 ```
 
 ---

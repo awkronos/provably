@@ -16,17 +16,19 @@
 from provably import verified
 
 @verified(
-    pre=lambda x: x >= 0,
-    post=lambda x, result: (result * result <= x) & (x < (result + 1) * (result + 1)),
+    pre=lambda val, lo, hi: lo <= hi,
+    post=lambda val, lo, hi, result: (result >= lo) & (result <= hi),
 )
-def integer_sqrt(x: int) -> int:
-    n = 0
-    while (n + 1) * (n + 1) <= x:
-        n += 1
-    return n
+def clamp(val: float, lo: float, hi: float) -> float:
+    if val < lo:
+        return lo
+    elif val > hi:
+        return hi
+    else:
+        return val
 
-integer_sqrt.__proof__.verified   # True
-str(integer_sqrt.__proof__)       # "[Q.E.D.] integer_sqrt"
+clamp.__proof__.verified   # True — for ALL inputs where lo <= hi
+str(clamp.__proof__)       # "[Q.E.D.] clamp"
 ```
 
 `verified=True` is a mathematical proof. Z3 determined that **no input** satisfying
