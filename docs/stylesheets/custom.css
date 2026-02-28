@@ -778,6 +778,20 @@ body,
   margin: 0 0 0.75rem;
 }
 
+.feature-card pre {
+  font-size: 0.78em;
+  overflow-x: auto;
+  margin: 0.5rem 0 0;
+}
+
+.feature-card .highlight {
+  overflow-x: auto;
+}
+
+.feature-card code {
+  font-size: 0.85em;
+}
+
 [data-md-color-scheme="default"] .feature-card {
   background: rgba(107, 76, 154, 0.03);
   border-color: rgba(107, 76, 154, 0.12);

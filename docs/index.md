@@ -8,7 +8,7 @@
   <span class="hero-badge">Counterexample extraction</span>
 </div>
 
-<div class="hero-example">
+<div class="hero-example" markdown>
 
 ```python
 from provably import verified
@@ -63,16 +63,29 @@ The contract holds for **every possible input** satisfying the precondition.
 
 ## What makes provably different
 
-**Proof certificates** — Z3 returns UNSAT. The certificate attaches to `func.__proof__`, computed at import time.
+<div class="feature-grid">
+
+<div class="feature-card" markdown>
+
+### Proof certificates
+
+Z3 returns UNSAT. The proof attaches to
+`func.__proof__` at import time.
 
 ```python
 cert = clamp.__proof__
-cert.verified        # True
-cert.solver_time_ms  # 2.4
-cert.to_prompt()     # LLM-ready repair format
+cert.verified       # True
+cert.solver_time_ms # 2.4
 ```
 
-**Counterexample extraction** — When a contract fails, Z3 returns the exact input that breaks it.
+</div>
+
+<div class="feature-card" markdown>
+
+### Counterexamples
+
+When a contract fails, Z3 returns the
+exact input that breaks it.
 
 ```python
 @verified(post=lambda n, r: r * r == n)
@@ -83,33 +96,75 @@ bad.__proof__.counterexample
 # {'n': 2, '__return__': 1}
 ```
 
-**Refinement types** — Embed bounds in `Annotated` signatures.
+</div>
+
+<div class="feature-card" markdown>
+
+### Refinement types
+
+Embed bounds directly in type annotations
+via `Annotated`.
 
 ```python
-@verified(post=lambda p, x, r: r >= 0)
+@verified
 def scale(
     p: Annotated[float, Between(0, 1)],
     x: Annotated[float, Gt(0)],
 ) -> NonNegative:
-    return p * x  # verified
+    return p * x
 ```
 
-**Compositionality** — Reuse verified contracts via `contracts=`.
+</div>
+
+<div class="feature-card" markdown>
+
+### Compositionality
+
+Reuse verified contracts without
+re-examining function bodies.
 
 ```python
 @verified(
-    contracts={"my_abs": my_abs.__contract__},
+    contracts={"abs": abs.__contract__},
     post=lambda x, y, r: r >= 0,
 )
-def manhattan(x: float, y: float) -> float:
-    return my_abs(x) + my_abs(y)  # verified
+def dist(x: float, y: float) -> float:
+    return abs(x) + abs(y)
 ```
 
-**Runtime checking** — `@runtime_checked` asserts contracts at call time without Z3.
+</div>
 
-**Self-verifying** — provably proves its own `min`, `max`, `abs`, `clamp`, `relu` on every CI push. See [Self-Proof](self-proof.md).
+<div class="feature-card" markdown>
 
-**Hypothesis bridge** — `pip install provably[hypothesis]` for `from_refinements()`, `hypothesis_check()`, and `@proven_property`.
+### Runtime checking
+
+`@runtime_checked` asserts contracts at
+call time. No Z3 required.
+
+```python
+@runtime_checked(
+    pre=lambda x: x >= 0,
+    post=lambda x, r: r * r <= x + 1,
+)
+def isqrt(x: int) -> int:
+    ...
+```
+
+</div>
+
+<div class="feature-card" markdown>
+
+### Self-verifying
+
+provably proves its own `min`, `max`, `abs`,
+`clamp`, `relu` on every CI push. If it can't
+prove its own builtins, the build breaks.
+
+[Self-Proof &rarr;](self-proof.md)
+
+</div>
+
+</div>
 
 ## Documentation
 
