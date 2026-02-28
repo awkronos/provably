@@ -4,7 +4,7 @@ Demonstrates:
   - @verified with a postcondition
   - What a counterexample looks like
   - Accessing the ProofCertificate directly
-  - The strict=True mode that raises on failure
+  - The raise_on_failure=True mode that raises on failure
 """
 
 from __future__ import annotations
@@ -95,12 +95,12 @@ print()
 
 
 # ---------------------------------------------------------------------------
-# 4. strict=True raises VerificationError on failure
+# 4. raise_on_failure=True raises VerificationError on failure
 # ---------------------------------------------------------------------------
 
-print("=== 4. strict=True mode ===")
+print("=== 4. raise_on_failure=True mode ===")
 try:
-    @verified(strict=True, post=lambda x, result: result == x + 2)
+    @verified(raise_on_failure=True, post=lambda x, result: result == x + 2)
     def inc_wrong(x: float) -> float:
         """Off-by-one error: returns x+1, not x+2."""
         return x + 1

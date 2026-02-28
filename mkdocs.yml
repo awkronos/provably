@@ -1,29 +1,31 @@
 site_name: Provably
-site_description: Proof-carrying Python functions via Z3
+site_description: Proof-carrying Python functions via Z3 — annotate, verify, ship.
 site_url: https://awkronos.github.io/provably
 repo_url: https://github.com/awkronos/provably
 repo_name: awkronos/provably
 edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2024 Kagami
 
 theme:
   name: material
+  custom_dir: docs/overrides
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: deep purple
-      accent: amber
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: deep purple
-      accent: amber
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
   font:
-    text: Inter
+    text: IBM Plex Sans
     code: JetBrains Mono
   features:
     - navigation.tabs
@@ -31,16 +33,29 @@ theme:
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
     - search.highlight
     - search.share
+    - search.suggest
     - content.code.copy
     - content.code.annotate
-    - toc.integrate
+    - content.tabs.link
+    - toc.follow
+    - announce.dismiss
   icon:
     repo: fontawesome/brands/github
+    admonition:
+      example: fontawesome/solid/flask-vial
+
+extra_css:
+  - stylesheets/custom.css
 
 plugins:
-  - search
+  - search:
+      lang: en
   - mkdocstrings:
       handlers:
         python:
@@ -53,6 +68,7 @@ plugins:
             separate_signature: true
             docstring_style: google
             merge_init_into_class: true
+            show_submodules: false
 
 markdown_extensions:
   - admonition
@@ -72,12 +88,16 @@ markdown_extensions:
       alternate_style: true
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - attr_list
   - md_in_html
   - tables
   - footnotes
   - toc:
       permalink: true
+      title: On this page
 
 extra_javascript:
   - https://polyfill.io/v3/polyfill.min.js?features=es6
@@ -87,6 +107,8 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/awkronos/provably
+      name: provably on GitHub
+  generator: false
 
 nav:
   - Home: index.md
@@ -105,4 +127,6 @@ nav:
       - provably.decorators: api/decorators.md
       - provably.types: api/types.md
       - provably.engine: api/engine.md
+  - Self-Proof: self-proof.md
+  - FAQ: faq.md
   - Changelog: changelog.md

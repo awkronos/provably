@@ -1,0 +1,413 @@
+/* =========================================================================
+   provably — custom theme
+   Void canvas (#0a0a0f) + gold accent (#D4AF37)
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   Fonts
+   ------------------------------------------------------------------------- */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+/* -------------------------------------------------------------------------
+   Dark theme — void canvas
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0a0a0f;
+  --md-default-fg-color: #e8e8ed;
+  --md-default-fg-color--light: #b8b8c0;
+  --md-default-fg-color--lighter: #78788a;
+  --md-default-fg-color--lightest: #3a3a4a;
+
+  --md-primary-fg-color: #D4AF37;
+  --md-primary-fg-color--light: #e8cc6a;
+  --md-primary-fg-color--dark: #a88a28;
+  --md-primary-bg-color: #0a0a0f;
+
+  --md-accent-fg-color: #D4AF37;
+  --md-accent-fg-color--transparent: rgba(212, 175, 55, 0.1);
+  --md-accent-bg-color: #0a0a0f;
+
+  --md-code-bg-color: #0e0e16;
+  --md-code-fg-color: #e8e8ed;
+  --md-code-hl-color: rgba(212, 175, 55, 0.12);
+
+  --md-typeset-a-color: #D4AF37;
+
+  --md-footer-bg-color: #06060b;
+  --md-footer-bg-color--dark: #040408;
+  --md-footer-fg-color: #78788a;
+  --md-footer-fg-color--light: #56566a;
+
+  --md-shadow-z1: 0 0 0 1px rgba(212, 175, 55, 0.06), 0 4px 16px rgba(0, 0, 0, 0.6);
+  --md-shadow-z2: 0 0 0 1px rgba(212, 175, 55, 0.08), 0 8px 32px rgba(0, 0, 0, 0.7);
+  --md-shadow-z3: 0 0 0 1px rgba(212, 175, 55, 0.1), 0 16px 48px rgba(0, 0, 0, 0.8);
+}
+
+/* -------------------------------------------------------------------------
+   Light theme — clean, warm parchment
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #6B4C9A;
+  --md-primary-fg-color--light: #8a6db8;
+  --md-primary-fg-color--dark: #4e3572;
+  --md-primary-bg-color: #ffffff;
+
+  --md-accent-fg-color: #C4991F;
+  --md-accent-fg-color--transparent: rgba(196, 153, 31, 0.1);
+
+  --md-typeset-a-color: #6B4C9A;
+  --md-code-hl-color: rgba(107, 76, 154, 0.1);
+}
+
+/* -------------------------------------------------------------------------
+   Typography
+   ------------------------------------------------------------------------- */
+body,
+.md-typeset {
+  font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+.md-typeset code,
+.md-typeset pre,
+.md-typeset kbd {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* Headings */
+.md-typeset h1 {
+  color: #D4AF37;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+[data-md-color-scheme="default"] .md-typeset h1 {
+  color: #6B4C9A;
+}
+
+.md-typeset h2 {
+  font-weight: 600;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+  padding-bottom: 0.3em;
+  margin-bottom: 1em;
+}
+
+[data-md-color-scheme="default"] .md-typeset h2 {
+  border-bottom-color: rgba(107, 76, 154, 0.2);
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+   Code blocks — glass card
+   ------------------------------------------------------------------------- */
+.md-typeset pre {
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  border-radius: 8px;
+  position: relative;
+}
+
+[data-md-color-scheme="slate"] .md-typeset pre {
+  background: #0e0e16;
+}
+
+[data-md-color-scheme="slate"] .md-typeset pre > code {
+  background: transparent;
+}
+
+/* Inline code */
+[data-md-color-scheme="slate"] .md-typeset code:not(.highlight code) {
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  color: #e8cc6a;
+}
+
+/* -------------------------------------------------------------------------
+   Navigation
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="slate"] .md-nav {
+  background: transparent;
+}
+
+.md-nav__link--active,
+.md-nav__link:is([aria-current]) {
+  color: #D4AF37 !important;
+  font-weight: 600;
+}
+
+[data-md-color-scheme="default"] .md-nav__link--active {
+  color: #6B4C9A !important;
+}
+
+[data-md-color-scheme="slate"] .md-header {
+  background: rgba(10, 10, 15, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.08);
+  box-shadow: none;
+}
+
+/* -------------------------------------------------------------------------
+   Search
+   ------------------------------------------------------------------------- */
+.md-search__input {
+  border-radius: 8px;
+}
+
+[data-md-color-scheme="slate"] .md-search__input {
+  background: rgba(212, 175, 55, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-search__input:focus {
+  border-color: rgba(212, 175, 55, 0.3);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.08);
+}
+
+/* -------------------------------------------------------------------------
+   Tables
+   ------------------------------------------------------------------------- */
+.md-typeset table:not([class]) {
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+  background: rgba(212, 175, 55, 0.08);
+  font-weight: 600;
+  color: #D4AF37;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+}
+
+[data-md-color-scheme="default"] .md-typeset table:not([class]) th {
+  background: rgba(107, 76, 154, 0.06);
+  color: #6B4C9A;
+  border-bottom-color: rgba(107, 76, 154, 0.15);
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:hover {
+  background: rgba(212, 175, 55, 0.03);
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* -------------------------------------------------------------------------
+   Admonitions — gold-tinted
+   ------------------------------------------------------------------------- */
+.md-typeset .admonition.example,
+.md-typeset details.example {
+  border-color: #D4AF37;
+}
+
+.md-typeset .admonition.example > .admonition-title,
+.md-typeset details.example > summary {
+  background: rgba(212, 175, 55, 0.08);
+  color: #D4AF37;
+}
+
+.md-typeset .admonition.example > .admonition-title::before,
+.md-typeset details.example > summary::before {
+  color: #D4AF37;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .admonition {
+  border-radius: 8px;
+  border-left-width: 3px;
+}
+
+/* -------------------------------------------------------------------------
+   Proof status badges
+   ------------------------------------------------------------------------- */
+.proof-qed {
+  color: #D4AF37;
+  font-weight: 600;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.proof-disproved {
+  color: #ef4444;
+  font-weight: 600;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.proof-unknown {
+  color: #a78bfa;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.proof-skipped {
+  color: #78788a;
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* -------------------------------------------------------------------------
+   Hero example block — index page
+   ------------------------------------------------------------------------- */
+.hero-example {
+  background: linear-gradient(
+    135deg,
+    rgba(212, 175, 55, 0.05) 0%,
+    rgba(99, 102, 241, 0.03) 100%
+  );
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin: 2rem 0;
+}
+
+[data-md-color-scheme="default"] .hero-example {
+  background: linear-gradient(
+    135deg,
+    rgba(107, 76, 154, 0.04) 0%,
+    rgba(212, 175, 55, 0.03) 100%
+  );
+  border-color: rgba(107, 76, 154, 0.15);
+}
+
+/* -------------------------------------------------------------------------
+   Feature grid — index page
+   ------------------------------------------------------------------------- */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.feature-card {
+  background: rgba(212, 175, 55, 0.03);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: border-color 144ms ease, background 144ms ease;
+}
+
+.feature-card:hover {
+  border-color: rgba(212, 175, 55, 0.25);
+  background: rgba(212, 175, 55, 0.05);
+}
+
+.feature-card h3 {
+  margin-top: 0;
+  color: #D4AF37;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+[data-md-color-scheme="default"] .feature-card {
+  background: rgba(107, 76, 154, 0.03);
+  border-color: rgba(107, 76, 154, 0.1);
+}
+
+[data-md-color-scheme="default"] .feature-card:hover {
+  border-color: rgba(107, 76, 154, 0.25);
+  background: rgba(107, 76, 154, 0.05);
+}
+
+[data-md-color-scheme="default"] .feature-card h3 {
+  color: #6B4C9A;
+}
+
+/* -------------------------------------------------------------------------
+   Proof table — self-proof page
+   ------------------------------------------------------------------------- */
+.proof-table {
+  width: 100%;
+  margin: 1.5rem 0;
+}
+
+.proof-table td:last-child {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.85em;
+}
+
+/* -------------------------------------------------------------------------
+   Tabs
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="slate"] .md-typeset .tabbed-labels > label {
+  color: #78788a;
+  border-bottom: 2px solid transparent;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .tabbed-labels > label:hover {
+  color: #D4AF37;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .tabbed-labels > label:has(+ input:checked) {
+  color: #D4AF37;
+  border-bottom-color: #D4AF37;
+}
+
+/* -------------------------------------------------------------------------
+   Footer
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="slate"] .md-footer {
+  border-top: 1px solid rgba(212, 175, 55, 0.06);
+}
+
+/* -------------------------------------------------------------------------
+   Announcement bar
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="slate"] .md-announce {
+  background: rgba(212, 175, 55, 0.08);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+  color: #D4AF37;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+[data-md-color-scheme="slate"] .md-announce a {
+  color: #e8cc6a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* -------------------------------------------------------------------------
+   Scrollbar — subtle gold tint in dark mode
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="slate"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-track {
+  background: #0a0a0f;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.2);
+  border-radius: 3px;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.35);
+}
+
+/* -------------------------------------------------------------------------
+   mkdocstrings API docs — tighten spacing
+   ------------------------------------------------------------------------- */
+.doc-heading {
+  border-bottom: 1px solid rgba(212, 175, 55, 0.1) !important;
+}
+
+[data-md-color-scheme="slate"] .doc-label {
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  color: #D4AF37;
+  border-radius: 4px;
+}
+
+/* -------------------------------------------------------------------------
+   Content area — max width for readability
+   ------------------------------------------------------------------------- */
+.md-content__inner {
+  max-width: 860px;
+}
