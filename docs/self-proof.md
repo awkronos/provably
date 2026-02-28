@@ -28,20 +28,27 @@ Every function in `src/provably/_self_proof.py` is decorated with `@verified`
 and collects a `ProofCertificate` at import time. The table below shows the
 current self-verified functions and their contracts.
 
+!!! note "Postcondition strength"
+    Each postcondition is the **strongest** property Z3 can close for the
+    given fragment. The proofs were deliberately strengthened beyond mere
+    bounds — selectivity (result equals one of the inputs), passthrough
+    (identity when in range), and exactness (result == x + 1) are all proved
+    where possible.
+
 | Function | Precondition | Postcondition |
 |----------|-------------|---------------|
-| `_z3_min(a, b)` | — | `result <= a` and `result <= b` |
-| `_z3_max(a, b)` | — | `result >= a` and `result >= b` |
-| `_z3_abs(x)` | — | `result >= 0` |
-| `clamp(val, lo, hi)` | `lo <= hi` | `lo <= result <= hi` |
-| `relu(x)` | — | `result >= 0` |
-| `bounded_increment(x)` | `0 <= x <= 99` | `1 <= result <= 100` |
-| `safe_divide(a, b)` | `b != 0` | `result * b == a` |
+| `_z3_min(a, b)` | — | `result <= a`, `result <= b`, and `result == a` or `result == b` |
+| `_z3_max(a, b)` | — | `result >= a`, `result >= b`, and `result == a` or `result == b` |
+| `_z3_abs(x)` | — | `result >= 0` and `result == x` or `result == -x` |
+| `clamp(val, lo, hi)` | `lo <= hi` | `lo <= result <= hi`; when `val` is in range, `result == val` |
+| `relu(x)` | — | `result >= 0` and `result == x` or `result == 0` |
+| `bounded_increment(x)` | `0 <= x <= 99` | `result == x + 1` (implies `1 <= result <= 100`) |
+| `safe_divide(a, b)` | `b > 0` | `result * b <= a < result * b + b` (floor-division bound) |
 | `identity(x)` | — | `result == x` |
 | `negate_negate(x)` | — | `result == x` |
-| `max_of_abs(a, b)` | — | `result >= 0` |
+| `max_of_abs(a, b)` | — | `result >= 0` and `result` is one of `a`, `-a`, `b`, `-b` |
 
-All ten proofs carry status `VERIFIED`. If any proof ever degrades to
+All ten proofs carry status <span class="proof-qed proof-qed--glow">Q.E.D.</span>. If any proof ever degrades to
 `COUNTEREXAMPLE` or `UNKNOWN`, CI fails immediately — `pytest tests/test_self_proof.py`
 is a required job in every CI run.
 
@@ -52,19 +59,25 @@ is a required job in every CI run.
 The self-proof module is not special-cased. It is a normal Python module that
 imports `@verified` and uses it:
 
-```python title="src/provably/_self_proof.py"
+```python title="src/provably/_self_proof.py (excerpt)"
 from provably.decorators import verified
 
 @verified(
-    post=lambda a, b, result: (result <= a) & (result <= b),
+    post=lambda a, b, result: (result <= a) & (result <= b) & ((result == a) | (result == b)),
 )
 def _z3_min(a: float, b: float) -> float:
-    """min(a, b): result is <= both a and b."""
+    """min(a, b): result is the actual minimum."""
     if a <= b:
         return a
     else:
         return b
 ```
+
+!!! proof "Why selectivity matters"
+    The weak postcondition `(result <= a) & (result <= b)` is satisfied by
+    `result = -∞`. The stronger form adds `(result == a) | (result == b)`,
+    which Z3 must also prove — ruling out any value that isn't one of the
+    two inputs. This is the complete characterisation of `min`.
 
 At import time, the `@verified` decorator:
 
@@ -91,14 +104,14 @@ print(cert.status)         # Status.VERIFIED
 print(cert.verified)       # True
 print(cert.solver_time_ms) # e.g. 3.4
 print(cert.z3_version)     # e.g. "4.13.0"
+print(cert.postconditions) # ('And(val < lo, Or(val > hi, result == val), ...)',)
 print(cert)
-# ProofCertificate(clamp, VERIFIED, 3.4ms, z3=4.13.0)
+# [Q.E.D.] clamp
 ```
 
 A `VERIFIED` status means Z3 proved the formula `∀ inputs : pre(inputs) ⟹ post(inputs, f(inputs))`
 is unsatisfiable when negated. This is not sampling. It is not fuzzing. It is a
-mathematical proof over all possible floating-point inputs in the Z3 real
-number model.
+mathematical proof over all possible real-number inputs in Z3's model.
 
 ---
 
@@ -124,7 +137,7 @@ the failure*. The CI job `self-proof` enforces this on every push.
 
 What self-proofs cannot guarantee: that the translator handles *all* Python
 constructs correctly. Only the subset used in `_self_proof.py` is exercised.
-Unknown constructs that trigger `TranslationError` are SKIPPED, not proved.
+Unknown constructs that trigger `TranslationError` are `SKIPPED`, not proved.
 
 ---
 
@@ -149,6 +162,7 @@ self-proof:
 The test suite in `tests/test_self_proof.py` asserts:
 
 - All 10 functions in `SELF_PROOFS` have `status == VERIFIED`.
+- Every postcondition uses the strongest provable form (selectivity, exactness, passthrough).
 - Every function still computes the correct result at runtime.
 - `__proof__` is attached to every function in the collection.
 
@@ -166,8 +180,8 @@ Self-proof is not a gimmick. It is a meaningful invariant:
 - It shows the translator handles real branching programs, integer arithmetic,
   and multi-argument preconditions — the core of the supported subset.
 - It gives library users a concrete demonstration of what `VERIFIED` means.
-  If `safe_divide` is truly verified, then for all integers `a` and `b != 0`,
-  the expression `a // b * b == a` holds in Z3's integer model.
+  If `safe_divide` is truly verified, then for all integers `a` and `b > 0`,
+  the expression `a // b * b <= a < a // b * b + b` holds in Z3's integer model.
 - It provides a regression safety net. Any change to the translator that
   breaks a self-proof is caught immediately, before it can affect user code.
 

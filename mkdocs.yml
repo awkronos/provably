@@ -49,6 +49,8 @@ theme:
     repo: fontawesome/brands/github
     admonition:
       example: fontawesome/solid/flask-vial
+      proof: fontawesome/solid/check
+      theorem: fontawesome/solid/circle-play
 
 extra_css:
   - stylesheets/custom.css
@@ -82,6 +84,8 @@ markdown_extensions:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
+      linenums: false
+      linenums_style: pymdownx-inline
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.tabbed:

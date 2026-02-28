@@ -73,6 +73,8 @@ body,
 .md-typeset pre,
 .md-typeset kbd {
   font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.875em;
+  line-height: 1.6;
 }
 
 /* Headings */
@@ -108,6 +110,11 @@ body,
   border: 1px solid rgba(212, 175, 55, 0.1);
   border-radius: 8px;
   position: relative;
+  transition: border-color 144ms ease;
+}
+
+.md-typeset pre:hover {
+  border-color: rgba(212, 175, 55, 0.22);
 }
 
 [data-md-color-scheme="slate"] .md-typeset pre {
@@ -125,6 +132,12 @@ body,
   border-radius: 4px;
   padding: 0.1em 0.35em;
   color: #e8cc6a;
+  transition: background 144ms ease, border-color 144ms ease;
+}
+
+[data-md-color-scheme="slate"] .md-typeset code:not(.highlight code):hover {
+  background: rgba(212, 175, 55, 0.13);
+  border-color: rgba(212, 175, 55, 0.2);
 }
 
 /* -------------------------------------------------------------------------
@@ -142,6 +155,14 @@ body,
 
 [data-md-color-scheme="default"] .md-nav__link--active {
   color: #6B4C9A !important;
+}
+
+[data-md-color-scheme="slate"] .md-nav__link {
+  transition: color 89ms ease;
+}
+
+[data-md-color-scheme="slate"] .md-nav__link:hover {
+  color: #e8cc6a;
 }
 
 [data-md-color-scheme="slate"] .md-header {
@@ -162,6 +183,7 @@ body,
 [data-md-color-scheme="slate"] .md-search__input {
   background: rgba(212, 175, 55, 0.05);
   border: 1px solid rgba(212, 175, 55, 0.1);
+  transition: border-color 144ms ease, box-shadow 144ms ease;
 }
 
 [data-md-color-scheme="slate"] .md-search__input:focus {
@@ -191,8 +213,12 @@ body,
   border-bottom-color: rgba(107, 76, 154, 0.15);
 }
 
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr {
+  transition: background 89ms ease;
+}
+
 [data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:hover {
-  background: rgba(212, 175, 55, 0.03);
+  background: rgba(212, 175, 55, 0.04);
 }
 
 [data-md-color-scheme="slate"] .md-typeset table:not([class]) td {
@@ -221,35 +247,120 @@ body,
 [data-md-color-scheme="slate"] .md-typeset .admonition {
   border-radius: 8px;
   border-left-width: 3px;
+  transition: border-color 144ms ease;
 }
 
 /* -------------------------------------------------------------------------
-   Proof status badges
+   Custom admonition: proof (gold) — used for proof annotations
+   ------------------------------------------------------------------------- */
+:root {
+  --md-admonition-icon--proof: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>');
+  --md-admonition-icon--theorem: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>');
+}
+
+.md-typeset .admonition.proof,
+.md-typeset details.proof {
+  border-color: #D4AF37;
+}
+
+.md-typeset .admonition.proof > .admonition-title,
+.md-typeset details.proof > summary {
+  background: rgba(212, 175, 55, 0.1);
+  color: #D4AF37;
+  font-weight: 600;
+}
+
+.md-typeset .admonition.proof > .admonition-title::before,
+.md-typeset details.proof > summary::before {
+  background-color: #D4AF37;
+  -webkit-mask-image: var(--md-admonition-icon--proof);
+  mask-image: var(--md-admonition-icon--proof);
+}
+
+/* -------------------------------------------------------------------------
+   Custom admonition: theorem (purple)
+   ------------------------------------------------------------------------- */
+.md-typeset .admonition.theorem,
+.md-typeset details.theorem {
+  border-color: #8b5cf6;
+}
+
+.md-typeset .admonition.theorem > .admonition-title,
+.md-typeset details.theorem > summary {
+  background: rgba(139, 92, 246, 0.1);
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+.md-typeset .admonition.theorem > .admonition-title::before,
+.md-typeset details.theorem > summary::before {
+  background-color: #8b5cf6;
+  -webkit-mask-image: var(--md-admonition-icon--theorem);
+  mask-image: var(--md-admonition-icon--theorem);
+}
+
+/* -------------------------------------------------------------------------
+   Proof status badges — with glow on verified
    ------------------------------------------------------------------------- */
 .proof-qed {
+  display: inline-block;
   color: #D4AF37;
   font-weight: 600;
   font-family: "JetBrains Mono", monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.6em;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 4px;
+  background: rgba(212, 175, 55, 0.08);
+  transition: box-shadow 233ms ease, background 233ms ease;
+}
+
+.proof-qed:hover {
+  background: rgba(212, 175, 55, 0.14);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.25), 0 0 24px rgba(212, 175, 55, 0.1);
+}
+
+/* Ambient glow — always on for verified badges */
+.proof-qed--glow {
+  box-shadow: 0 0 6px rgba(212, 175, 55, 0.2);
 }
 
 .proof-disproved {
+  display: inline-block;
   color: #ef4444;
   font-weight: 600;
   font-family: "JetBrains Mono", monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.6em;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.08);
 }
 
 .proof-unknown {
+  display: inline-block;
   color: #a78bfa;
   font-family: "JetBrains Mono", monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.6em;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 4px;
+  background: rgba(167, 139, 250, 0.07);
 }
 
 .proof-skipped {
+  display: inline-block;
   color: #78788a;
   font-family: "JetBrains Mono", monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.6em;
+  border: 1px solid rgba(120, 120, 138, 0.25);
+  border-radius: 4px;
+  background: rgba(120, 120, 138, 0.06);
 }
 
 /* -------------------------------------------------------------------------
-   Hero example block — index page
+   Hero section — index page
    ------------------------------------------------------------------------- */
 .hero-example {
   background: linear-gradient(
@@ -261,6 +372,16 @@ body,
   border-radius: 12px;
   padding: 1.5rem;
   margin: 2rem 0;
+  transition: border-color 233ms ease, background 233ms ease;
+}
+
+.hero-example:hover {
+  border-color: rgba(212, 175, 55, 0.28);
+  background: linear-gradient(
+    135deg,
+    rgba(212, 175, 55, 0.08) 0%,
+    rgba(99, 102, 241, 0.05) 100%
+  );
 }
 
 [data-md-color-scheme="default"] .hero-example {
@@ -270,6 +391,58 @@ body,
     rgba(212, 175, 55, 0.03) 100%
   );
   border-color: rgba(107, 76, 154, 0.15);
+}
+
+/* Proof pipeline flow diagram */
+.proof-flow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 1.5rem 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78em;
+}
+
+.proof-flow-step {
+  background: rgba(212, 175, 55, 0.07);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 6px;
+  padding: 0.4em 0.8em;
+  color: #e8e8ed;
+  white-space: nowrap;
+  transition: background 144ms ease, border-color 144ms ease;
+}
+
+.proof-flow-step:hover {
+  background: rgba(212, 175, 55, 0.13);
+  border-color: rgba(212, 175, 55, 0.3);
+}
+
+.proof-flow-arrow {
+  color: rgba(212, 175, 55, 0.5);
+  font-size: 1em;
+  user-select: none;
+}
+
+.proof-flow-step--final {
+  background: rgba(212, 175, 55, 0.12);
+  border-color: rgba(212, 175, 55, 0.35);
+  color: #D4AF37;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.15);
+}
+
+[data-md-color-scheme="default"] .proof-flow-step {
+  background: rgba(107, 76, 154, 0.06);
+  border-color: rgba(107, 76, 154, 0.18);
+  color: #1a1a2e;
+}
+
+[data-md-color-scheme="default"] .proof-flow-step--final {
+  background: rgba(107, 76, 154, 0.12);
+  border-color: rgba(107, 76, 154, 0.35);
+  color: #6B4C9A;
 }
 
 /* -------------------------------------------------------------------------
@@ -287,12 +460,13 @@ body,
   border: 1px solid rgba(212, 175, 55, 0.1);
   border-radius: 8px;
   padding: 1.5rem;
-  transition: border-color 144ms ease, background 144ms ease;
+  transition: border-color 144ms ease, background 144ms ease, transform 144ms ease;
 }
 
 .feature-card:hover {
   border-color: rgba(212, 175, 55, 0.25);
   background: rgba(212, 175, 55, 0.05);
+  transform: translateY(-1px);
 }
 
 .feature-card h3 {
@@ -326,7 +500,7 @@ body,
 
 .proof-table td:last-child {
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.85em;
+  font-size: 0.82em;
 }
 
 /* -------------------------------------------------------------------------
@@ -335,6 +509,7 @@ body,
 [data-md-color-scheme="slate"] .md-typeset .tabbed-labels > label {
   color: #78788a;
   border-bottom: 2px solid transparent;
+  transition: color 89ms ease;
 }
 
 [data-md-color-scheme="slate"] .md-typeset .tabbed-labels > label:hover {
@@ -385,10 +560,11 @@ body,
 [data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb {
   background: rgba(212, 175, 55, 0.2);
   border-radius: 3px;
+  transition: background 144ms ease;
 }
 
 [data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(212, 175, 55, 0.35);
+  background: rgba(212, 175, 55, 0.38);
 }
 
 /* -------------------------------------------------------------------------
@@ -403,6 +579,7 @@ body,
   border: 1px solid rgba(212, 175, 55, 0.2);
   color: #D4AF37;
   border-radius: 4px;
+  transition: background 89ms ease;
 }
 
 /* -------------------------------------------------------------------------

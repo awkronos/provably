@@ -40,6 +40,12 @@ Everything outside the TCB — the `@verified` decorator wrapper, `ProofCertific
 `verify_module`, `@runtime_checked` — does not affect soundness. A bug there can produce
 incorrect metadata but cannot produce a spurious `verified=True`.
 
+!!! proof "Self-verification"
+    provably reduces its translator's blast radius by proving its own core functions.
+    The [strange loop](../self-proof.md) means: if the translator has a bug that produces
+    a wrong proof for `_z3_min` or `clamp`, the CI self-proof job catches it.
+    It cannot catch bugs in untested constructs — but it exercises the core fragment.
+
 ## Epistemological tiers
 
 Following the project's epistemology:
@@ -55,7 +61,7 @@ Following the project's epistemology:
 
 **1. Termination.** provably does not verify that functions terminate. A function with
 a `while` loop that never exits satisfies any postcondition vacuously by never returning.
-provably rejects `while` loops precisely because termination is undecidable in general.
+provably rejects unbounded `while` loops precisely because termination is undecidable in general.
 See the FAQ in [Supported Python](../guides/supported-python.md).
 
 **2. Runtime correctness of unsupported constructs.** If your function calls a non-verified
@@ -93,6 +99,8 @@ recursive reasoning, a proof assistant is the appropriate tool.
 
 ## Soundness vs. completeness
 
-provably is **sound** (no false positives: if it says `verified`, the VC is valid) modulo
-the TCB. It is **incomplete** (false negatives exist: some valid properties over unsupported
-constructs cannot be checked). This is the correct trade-off for a push-button tool.
+!!! theorem "The core guarantee"
+    provably is **sound** modulo the TCB: if it says `verified`, the VC is valid. It is
+    **incomplete**: some valid properties over unsupported constructs cannot be checked.
+    This is the correct trade-off for a push-button tool. Sound and incomplete beats
+    complete and unsound — a spurious proof is worse than no proof.

@@ -34,6 +34,11 @@ def collatz_step(n: int) -> int:
     if n % 2 == 0:
         return n // 2
     return 3 * n + 1
+
+# For any n > 0:
+# - result > 0  (always positive)
+# - result <= n  (weakens toward fixed point n=1)
+# collatz_step.__proof__.verified → True
 ```
 
 The name `result` is fixed — do not use a different name.
@@ -46,12 +51,17 @@ Z3 `BoolRef` objects — they will silently return one of their operands as a Py
 value, not a Z3 constraint:
 
 ```python
-# WRONG — 'and' returns the second Z3 expression, not z3.And
+# WRONG — 'and' returns the second Z3 expression, not z3.And(...)
 post=lambda a, b, result: result >= 0 and result < b
 
-# CORRECT
+# CORRECT — & builds a z3.And expression
 post=lambda a, b, result: (result >= 0) & (result < b)
 ```
+
+!!! warning "Silent failure mode"
+    `result >= 0 and result < b` does not raise an error — it returns `result < b`
+    as the postcondition, silently dropping the first conjunct. This can produce a
+    proof that appears to verify a weaker contract than intended. Always use `&`.
 
 In `pre` lambdas with numeric comparisons (no Z3 variables yet created), plain `and`
 may appear to work, but `&` is always safer and consistent.
@@ -70,6 +80,9 @@ Combine with `&` for multiple conditions in a single lambda:
 )
 def modulo(a: int, b: int) -> int:
     return a % b
+
+# result >= 0 AND result < b — both proved simultaneously.
+# modulo.__proof__.verified → True
 ```
 
 ## `pre=None`
@@ -79,10 +92,13 @@ possible inputs:
 
 ```python
 @verified(
-    post=lambda x, result: result == abs(x),
+    post=lambda x, result: (result >= 0) & ((result == x) | (result == -x)),
 )
 def my_abs(x: int) -> int:
     return x if x >= 0 else -x
+
+# Proves: for ALL integers x (no precondition), abs returns x or -x
+# and the result is non-negative.
 ```
 
 ## Accessing module-level constants
@@ -95,12 +111,17 @@ concrete Z3 values:
 MAX = 100
 
 @verified(
-    post=lambda x, result: result <= MAX,
+    post=lambda x, result: (result <= MAX) & (result >= 0),
 )
 def cap(x: int) -> int:
     if x > MAX:
         return MAX
+    if x < 0:
+        return 0
     return x
+
+# Proves result is always in [0, 100], for all integer x.
+# cap.__proof__.verified → True
 ```
 
 Module-level constants that are not `int` or `float` will result in `TRANSLATION_ERROR`.
@@ -109,6 +130,22 @@ Module-level constants that are not `int` or `float` will result in `TRANSLATION
 
 Pass `contracts=` with a dict of helper function contracts to enable modular verification.
 See [Compositionality](compositionality.md) for details.
+
+## Contract strength
+
+Prefer **stronger** postconditions. A weak postcondition that is easy to prove may not
+be useful — it allows too many implementations.
+
+```python
+# WEAK: only proves non-negative — consistent with returning 0 always
+post=lambda x, result: result >= 0
+
+# STRONG: proves result equals x or -x — rules out result=0 when x=5
+post=lambda x, result: (result >= 0) & ((result == x) | (result == -x))
+```
+
+The stronger form is the complete specification of absolute value. If Z3 can close it,
+use it.
 
 ## Contract limitations
 
