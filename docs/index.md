@@ -63,111 +63,53 @@ The contract holds for **every possible input** satisfying the precondition.
 
 ## What makes provably different
 
-<div class="feature-grid">
-
-<div class="feature-card">
-
-### Proof certificates
-
-Z3 returns `UNSAT` -- no counterexample exists. The certificate attaches to `func.__proof__`,
-computed at import time. No solver runs at call time.
+**Proof certificates** — Z3 returns UNSAT. The certificate attaches to `func.__proof__`, computed at import time.
 
 ```python
-cert = my_func.__proof__
-cert.verified       # True
-cert.status         # Status.VERIFIED
-cert.solver_time_ms # 2.4
+cert = clamp.__proof__
+cert.verified        # True
+cert.solver_time_ms  # 2.4
+cert.to_prompt()     # LLM-ready repair format
 ```
 
-</div>
-
-<div class="feature-card">
-
-### Counterexample extraction
-
-When a contract fails, Z3 produces the exact witness -- the smallest input
-that breaks your specification.
+**Counterexample extraction** — When a contract fails, Z3 returns the exact input that breaks it.
 
 ```python
-@verified(post=lambda n, result: result * result == n)
-def bad_sqrt(n: int) -> int:
+@verified(post=lambda n, r: r * r == n)
+def bad(n: int) -> int:
     return n // 2
 
-bad_sqrt.__proof__.counterexample
+bad.__proof__.counterexample
 # {'n': 2, '__return__': 1}
 ```
 
-</div>
-
-<div class="feature-card">
-
-### Refinement types
-
-Embed constraints in `typing.Annotated` signatures. Parameter bounds become
-Z3 preconditions automatically.
+**Refinement types** — Embed bounds in `Annotated` signatures.
 
 ```python
-from provably.types import Between, Gt, NonNegative
-
-@verified(post=lambda p, result: result >= 0)
+@verified(post=lambda p, x, r: r >= 0)
 def scale(
     p: Annotated[float, Between(0, 1)],
     x: Annotated[float, Gt(0)],
 ) -> NonNegative:
-    return p * x
-# scale.__proof__.verified -> True
+    return p * x  # verified
 ```
 
-</div>
-
-<div class="feature-card">
-
-### Compositionality
-
-Reuse verified contracts without re-examining bodies -- classical assume/guarantee reasoning.
+**Compositionality** — Reuse verified contracts via `contracts=`.
 
 ```python
 @verified(
-    contracts={"abs_val": abs_val.__contract__},
-    post=lambda x, y, result: result >= 0,
+    contracts={"my_abs": my_abs.__contract__},
+    post=lambda x, y, r: r >= 0,
 )
 def manhattan(x: float, y: float) -> float:
-    return abs_val(x) + abs_val(y)
-# manhattan.__proof__.verified -> True
+    return my_abs(x) + my_abs(y)  # verified
 ```
 
-</div>
+**Runtime checking** — `@runtime_checked` asserts contracts at call time without Z3.
 
-<div class="feature-card">
+**Self-verifying** — provably proves its own `min`, `max`, `abs`, `clamp`, `relu` on every CI push. See [Self-Proof](self-proof.md).
 
-### `@runtime_checked`
-
-Assert contracts at every call without the solver. Raises `ContractViolationError` on violation.
-
-```python
-@runtime_checked(
-    pre=lambda x: x >= 0,
-    post=lambda x, result: abs(result * result - x) < 1e-9,
-)
-def precise_sqrt(x: float) -> float:
-    return x ** 0.5
-
-precise_sqrt(-1.0)  # raises ContractViolationError
-```
-
-</div>
-
-<div class="feature-card">
-
-### Self-proving
-
-<span class="proof-qed proof-qed--glow">Q.E.D.</span>&nbsp; provably proves its own internal
-functions on every CI push. If it can't prove `min`, `max`, `abs`, `clamp`, and `relu` correct,
-the build breaks. See [Self-Proof](self-proof.md).
-
-</div>
-
-</div>
+**Hypothesis bridge** — `pip install provably[hypothesis]` for `from_refinements()`, `hypothesis_check()`, and `@proven_property`.
 
 ## Documentation
 
