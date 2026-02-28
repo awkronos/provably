@@ -166,7 +166,7 @@ class ProofCertificate:
         if self.counterexample is not None:
             ce = {}
             for k, v in self.counterexample.items():
-                if isinstance(v, (int, float, bool, str, type(None))):
+                if isinstance(v, int | float | bool | str | type(None)):
                     ce[k] = v
                 else:
                     ce[k] = str(v)

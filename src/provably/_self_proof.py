@@ -55,12 +55,11 @@ def _z3_abs(x: float) -> float:
         return -x
 
 
-@verified(
-    pre=lambda val, lo, hi: lo <= hi,
-    post=lambda val, lo, hi, result: (result >= lo)
-    & (result <= hi)
-    & ((val < lo) | (val > hi) | (result == val)),
-)
+def _clamp_post(val, lo, hi, result):  # type: ignore[no-untyped-def]
+    return (result >= lo) & (result <= hi) & ((val < lo) | (val > hi) | (result == val))
+
+
+@verified(pre=lambda val, lo, hi: lo <= hi, post=_clamp_post)
 def clamp(val: float, lo: float, hi: float) -> float:
     """clamp(val, lo, hi): result in [lo, hi]; when val is already in range, result == val."""
     if val < lo:
@@ -129,10 +128,11 @@ def negate_negate(x: float) -> float:
     return -neg
 
 
-@verified(
-    post=lambda a, b, result: (result >= 0)
-    & ((result == a) | (result == -a) | (result == b) | (result == -b)),
-)
+def _max_of_abs_post(a, b, result):  # type: ignore[no-untyped-def]
+    return (result >= 0) & ((result == a) | (result == -a) | (result == b) | (result == -b))
+
+
+@verified(post=_max_of_abs_post)
 def max_of_abs(a: float, b: float) -> float:
     """max_of_abs(a, b): result is max(|a|, |b|) — non-negative, equal to |a| or |b|.
 

@@ -1477,7 +1477,7 @@ class TestEngineZ3ValRationalDirect:
         assert cert.status == Status.COUNTEREXAMPLE
         assert cert.counterexample is not None
         n_val = cert.counterexample.get("n")
-        assert isinstance(n_val, (int, float, str))
+        assert isinstance(n_val, int | float | str)
 
 
 # ---------------------------------------------------------------------------
@@ -2062,7 +2062,7 @@ class TestEngineRationalCounterexample:
         assert cert.counterexample is not None
         x_val = cert.counterexample.get("x")
         # Could be int or float — both are valid Python scalars
-        assert isinstance(x_val, (int, float, str))
+        assert isinstance(x_val, int | float | str)
 
 
 # ===========================================================================

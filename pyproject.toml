@@ -36,7 +36,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "hypothesis>=6.100",
     "mypy>=1.9",
-    "ruff>=0.14",
+    "ruff==0.14.0",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.24",
     "mkdocs-autorefs>=1.0",

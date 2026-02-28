@@ -148,7 +148,7 @@ class Translator:
                     return env, z3.BoolVal(True)
                 return env, self._expr(stmt.value, env)
 
-            if isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            if isinstance(stmt, ast.Assign | ast.AnnAssign):
                 env = self._do_assign(stmt, env)
 
             elif isinstance(stmt, ast.AugAssign):
