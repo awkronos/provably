@@ -1,219 +1,142 @@
 # FAQ
 
-Precise answers to common questions about provably, Z3, and formal verification.
-
----
-
 ## Why can't I use `and`/`or`/`not` in contracts?
 
-Python's `and`, `or`, and `not` are boolean short-circuit operators built into
-the language grammar. They cannot be overloaded. When you write `a and b`,
-Python evaluates `a`, and if it is falsy, returns `a` without evaluating `b`.
-This happens before Z3 ever sees the expression.
-
-Z3 uses operator overloading to build symbolic expression trees. When you
-write `a & b` on two `z3.BoolRef` objects, Z3's `__and__` method runs and
-returns a new `z3.BoolRef` representing the conjunction. The `&` operator
-*can* be overloaded; `and` cannot.
-
-**Use `&` for AND, `|` for OR, `~` for NOT** in all pre/post lambdas:
-
 ```python
-# Wrong — Python short-circuits, returns the second operand as a Python value
+# Wrong -- Python short-circuits, drops the first conjunct
 @verified(post=lambda x, result: result >= 0 and result <= 100)
-def f(x: int) -> int: ...
 
-# Correct — Z3 builds a symbolic conjunction
+# Correct -- Z3 builds a symbolic conjunction
 @verified(post=lambda x, result: (result >= 0) & (result <= 100))
-def f(x: int) -> int: ...
 ```
 
-The parentheses around each comparison are required because `&` has lower
-precedence than `>=` in Python.
+Python's `and`/`or`/`not` cannot be overloaded. `a & b` on `z3.BoolRef` invokes
+`__and__` and returns a symbolic expression. `a and b` short-circuits in Python
+and never reaches Z3.
+
+Parentheses required: `&` has lower precedence than `>=`.
 
 ---
 
-## Why doesn't provably support while loops?
+## Why no while loops?
 
-Z3's quantifier-free linear arithmetic is *decidable*, meaning the solver
-always terminates with a definitive answer. While loops can iterate an
-unbounded number of times, making the verification problem undecidable in
-general: you would need to find a *loop invariant* that holds before every
-iteration and implies the postcondition after the loop terminates.
+Z3's quantifier-free arithmetic is decidable -- the solver always terminates.
+While loops make verification undecidable: you need a loop invariant, and invariant
+synthesis is an open research problem. provably rejects them with `TranslationError`.
 
-Loop invariant synthesis is an active research area. Some tools (Dafny,
-Frama-C, VeriFast) require the programmer to supply invariants as annotations.
-provably's design goal is zero annotation overhead — contracts only, no
-invariants — so while loops are currently unsupported and receive `TranslationError`.
-
-`for` loops over small known ranges are planned. If your use case requires while
-loops, see [Supported Python](guides/supported-python.md) for alternatives, or
-open an issue describing your contract.
+Bounded `for i in range(N)` with literal `N` is planned.
+See [Supported Python](guides/supported-python.md).
 
 ---
 
 ## What does "TCB" mean?
 
-Trusted Computing Base. In formal verification, the TCB is the set of
-components whose correctness must be *assumed* rather than proved. A smaller
-TCB means fewer things can go wrong silently.
+Trusted Computing Base -- components whose correctness is assumed, not proved.
 
-provably's TCB:
+| Component | Risk |
+|---|---|
+| Python AST parser | Source must match bytecode |
+| `Translator` (~500 LOC) | Mistranslation = proof of wrong formula |
+| Z3 | Must implement SMT correctly |
+| CPython | Executes everything |
 
-- **Python's AST parser** — the source text must accurately reflect what CPython executes.
-- **provably's translator** (`translator.py`) — it must map Python semantics to Z3 semantics faithfully. A translation bug produces a proof of the wrong formula, which is the primary failure mode.
-- **Z3** — the SMT solver must implement its decision procedure correctly.
-- **CPython** — the runtime that executes everything.
-
-When a proof is `VERIFIED`, it means: *assuming the TCB is correct, the
-contract holds for all inputs satisfying the precondition.* This is still
-a substantially stronger guarantee than any test suite, which only exercises
-finitely many inputs.
-
-See [Soundness](concepts/soundness.md) for the full epistemological picture.
+`VERIFIED` means: *assuming the TCB is correct, the contract holds for all inputs
+satisfying the precondition.* See [Soundness](concepts/soundness.md).
 
 ---
 
 ## Is this a replacement for unit tests?
 
-No. They are complementary.
+No. Complementary.
 
-A `VERIFIED` proof covers *all possible inputs* satisfying the precondition,
-which a test suite cannot. But tests verify things provably cannot:
+| Concern | `@verified` | Tests |
+|---|---|---|
+| All inputs (precondition-bounded) | Yes | No |
+| Integration / I/O / network | No | Yes |
+| Performance | No | Yes |
+| Concurrency | No | Yes |
+| Unsupported constructs | `SKIPPED` | Yes |
 
-- **Integration behavior** — what happens when your function talks to a database,
-  a network, or a filesystem.
-- **Performance** — proofs say nothing about runtime complexity.
-- **Concurrency** — the translator is single-threaded and sequential.
-- **Dynamic dispatch** — proofs assume the function body as written; if a
-  method is overridden, the proof does not follow.
-- **Unsupported constructs** — anything that produces `TranslationError` or
-  `SKIPPED` must be tested conventionally.
-
-The recommended workflow: use `@verified` for pure functions with clear
-mathematical contracts, and use unit tests + integration tests for everything
-else. Use `@runtime_checked` as a defense-in-depth layer between them.
+Use `@verified` for pure functions with mathematical contracts.
+Use tests for everything else.
+Use `@runtime_checked` as defense-in-depth between them.
 
 ---
 
-## How fast is Z3 verification?
+## How fast is verification?
 
-For the functions provably currently supports (linear arithmetic, simple
-branching, integer/float operations), Z3 typically closes proofs in **1–20ms**.
-More complex contracts with many variables or nonlinear arithmetic may take
-100ms–5s.
-
-The default timeout is **5000ms** (5 seconds). Functions that exceed it receive
-status `UNKNOWN`. Adjust per-decorator:
+1--20ms typical for linear arithmetic. 100ms--5s for complex nonlinear contracts.
+Default timeout: 5000ms.
 
 ```python
-@verified(
-    post=lambda x, result: result >= 0,
-    timeout_ms=10_000,
-)
+@verified(post=lambda x, result: result >= 0, timeout_ms=10_000)
 def complex_function(x: float) -> float: ...
 ```
 
-Or globally:
-
 ```python
 from provably import configure
-configure(timeout_ms=10_000)
+configure(timeout_ms=10_000)  # global
 ```
 
-Z3 results are cached by source hash. If you re-import a module or call
-`@verified` on an already-decorated function, the cached certificate is
-returned immediately without re-running Z3.
+Results are cached by source hash. Re-import returns the cached certificate.
 
 ---
 
-## What happens if Z3 times out?
+## What if Z3 times out?
 
-The proof attempt returns `Status.UNKNOWN`. The `ProofCertificate` carries
-`verified=False` and `status=Status.UNKNOWN`.
-
-If `raise_on_failure=True`, a timeout raises `VerificationError`. Otherwise,
-the function is silently wrapped with no static guarantee.
-
-Timeouts are not treated as proof failures (unlike `COUNTEREXAMPLE`), because
-a timeout only says "we didn't finish" — it does not mean the contract is
-false. To deal with `UNKNOWN` results:
+`Status.UNKNOWN` -- not a proof failure, just "didn't finish."
 
 1. Increase `timeout_ms`.
-2. Simplify the contract.
-3. Split the function into smaller provable pieces.
-4. Use `@runtime_checked` as a runtime guard while the static proof remains open.
+2. Simplify the contract or eliminate nonlinear terms.
+3. Split into smaller `@verified` helpers with `contracts=`.
+4. Use `@runtime_checked` as a fallback.
 
 ---
 
 ## Can I verify functions that call external libraries?
 
-Not statically. If your function calls `math.sqrt`, `numpy.sum`, or any
-function that is not itself `@verified` with a known contract, the translator
-cannot reason about that call's result.
-
-provably's compositionality mechanism handles *provably-verified* callees:
+Not statically. Use `contracts=` for provably-verified callees:
 
 ```python
-@verified(post=lambda x, result: result >= 0)
-def my_abs(x: float) -> float:
-    return x if x >= 0 else -x
-
 @verified(
     post=lambda x, result: result >= 0,
     contracts={"my_abs": my_abs.__contract__},
 )
 def double_abs(x: float) -> float:
-    return my_abs(x) * 2   # provably knows my_abs returns >= 0
-# double_abs.__proof__.verified → True
+    return my_abs(x) * 2
+# double_abs.__proof__.verified -> True
 ```
 
-For external functions, the options are:
-
-- Wrap the external call in a `@verified` stub with a manually stated contract
-  and `SKIPPED` status, treating the contract as an axiom.
-- Use `@runtime_checked` to guard the call at runtime.
-- Restrict the function body to constructs the translator supports.
-
-See [Compositionality](concepts/compositionality.md) for the full pattern.
+For external calls: wrap in a `@verified` stub with a manually stated contract,
+or use `@runtime_checked`. See [Compositionality](concepts/compositionality.md).
 
 ---
 
-## Does provably work with mypy/pyright?
+## Does it work with mypy/pyright?
 
-Yes, for the most part. provably is fully typed and ships a `py.typed` marker.
-Refinement type markers (`Ge`, `Le`, `Between`, etc.) are typed as
-`typing.Annotated` values, which mypy and pyright understand structurally — they
-see `Annotated[float, Ge(0)]` as `float`.
+Yes. provably ships `py.typed`. Refinement markers are `typing.Annotated` values --
+type checkers see `Annotated[float, Ge(0)]` as `float`.
 
-The one gap: `func.__proof__` is attached dynamically by the decorator, and
-the type stubs use `# type: ignore` comments to suppress the attribute errors.
-If you access `__proof__` frequently, cast or use `hasattr`:
+The `__proof__` attribute is dynamic. Access it via:
 
 ```python
-from provably.engine import ProofCertificate
-import typing
-
 cert = typing.cast(ProofCertificate, getattr(my_func, "__proof__"))
 ```
 
-A `Protocol` for verified functions is on the roadmap for a future release.
-
 ---
 
-## What's the difference between `@verified` and `@runtime_checked`?
+## `@verified` vs `@runtime_checked`
 
 | | `@verified` | `@runtime_checked` |
 |---|---|---|
-| **When** | At decoration time (import) | At every call |
-| **Requires Z3** | Yes | No |
-| **Coverage** | All inputs (mathematical proof) | Only inputs actually passed |
-| **Overhead at call site** | Zero | One lambda evaluation per call |
-| **Counterexamples** | Concrete, automatic | N/A — violation is the counterexample |
-| **Unsupported constructs** | `TranslationError` → `SKIPPED` | Always works |
+| When | Import time | Every call |
+| Requires Z3 | Yes | No |
+| Coverage | All inputs (proof) | Only inputs passed |
+| Call-site overhead | Zero | One lambda eval |
+| Counterexamples | Automatic | N/A |
+| Unsupported constructs | `TranslationError` | Always works |
 
-Use `@verified` when you want a proof. Use `@runtime_checked` when you want
-an assertion. Combine them with `check_contracts=True`:
+Combine with `check_contracts=True` for defense-in-depth:
 
 ```python
 @verified(
@@ -225,21 +148,9 @@ def sqrt_approx(x: float) -> float:
     return x ** 0.5
 ```
 
-`check_contracts=True` adds runtime enforcement even when the static proof
-succeeds, giving defense-in-depth against TCB failures.
-
 ---
 
 ## Can provably prove itself?
 
-Yes — and it does, on every push to `main`. See the [Self-Proof](self-proof.md)
-page for the full explanation.
-
-The short version: `src/provably/_self_proof.py` contains ten pure functions
-decorated with `@verified`. They are provably's own reference implementations
-of `min`, `max`, `abs`, `clamp`, `relu`, division, and identity. All ten proofs
-hold at `Status.VERIFIED`, and the CI job `self-proof` asserts this on every
-commit. If a translator regression breaks any self-proof, the job fails before merge.
-
-This is not a proof of provably's completeness. It is a meaningful invariant:
-the translator can correctly handle the constructs it uses in its own core abstractions.
+Yes. Ten self-proofs, all `VERIFIED`, enforced on every push.
+See [Self-Proof](self-proof.md).

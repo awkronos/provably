@@ -1,6 +1,6 @@
 # How It Works
 
-provably's core pipeline: **Python source → AST → Z3 constraints → SMT query → proof or counterexample**.
+**Python source &rarr; AST &rarr; Z3 constraints &rarr; SMT query &rarr; proof or counterexample.**
 
 ## Architecture
 
@@ -10,18 +10,18 @@ provably's core pipeline: **Python source → AST → Z3 constraints → SMT que
 ┌─────────────────────────────────────────────────────────────┐
 │                    @verified decorator                       │
 │                                                             │
-│  1. inspect.getsource(fn)   ─→  source text                 │
-│  2. ast.parse(source)       ─→  Python AST                  │
-│  3. Translator.visit(ast)   ─→  Z3 expressions   (TCB)      │
-│  4. build_vc(pre, body, post)  ─→  Z3 formula               │
-│  5. solver.check(¬VC)       ─→  sat / unsat / unknown       │
-│  6. attach __proof__        ─→  ProofCertificate             │
+│  1. inspect.getsource(fn)   ->  source text                 │
+│  2. ast.parse(source)       ->  Python AST                  │
+│  3. Translator.visit(ast)   ->  Z3 expressions   (TCB)      │
+│  4. build_vc(pre, body, post)  ->  Z3 formula               │
+│  5. solver.check(not VC)    ->  sat / unsat / unknown       │
+│  6. attach __proof__        ->  ProofCertificate             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 </div>
 
-## Step 1: Source retrieval
+## Source retrieval
 
 ```python
 import inspect, ast, textwrap
@@ -30,71 +30,54 @@ source = inspect.getsource(fn)
 tree   = ast.parse(textwrap.dedent(source))
 ```
 
-provably uses `inspect.getsource` rather than bytecode inspection because Z3 needs symbolic
-expressions — not runtime values. This means the function must be defined in a file that
-Python can read (not in a REPL `<string>` buffer). Lambdas defined outside a module file
-are also not retrievable; use named functions.
+The function must be defined in a readable `.py` file -- not a REPL buffer or `exec()` string.
 
-## Step 2: AST translation (the TCB)
+## AST translation (the TCB)
 
-The `Translator` class walks the AST and emits Z3 expressions. This is the **Trusted
-Computing Base (TCB)**: if there is a bug in the translator, a proof could be unsound.
-The TCB is deliberately small (~500 LOC) and tested extensively.
+The `Translator` class (~500 LOC) walks the AST and emits Z3 expressions. This is the
+**Trusted Computing Base**: a bug here produces unsound proofs.
 
-Each parameter is introduced as a Z3 symbolic variable:
+Each parameter becomes a Z3 symbolic variable:
 
 ```python
-# Python:    def clamp(x: float, lo: float, hi: float) -> float
-# Translator creates:
+# def clamp(x: float, lo: float, hi: float) -> float
 x  = z3.Real('x')
 lo = z3.Real('lo')
 hi = z3.Real('hi')
 ```
 
-Refinement markers from `typing.Annotated` are extracted and added as background assumptions:
+Refinement markers become background assumptions:
 
 ```python
 # x: Annotated[float, Between(0.0, 1.0)]
-# becomes:
-assumptions = [x >= 0.0, x <= 1.0]
+assumptions = [x >= 0.0, x <= 1.0]  # added to solver
 ```
 
-Arithmetic and comparison AST nodes translate directly:
+### Translation table
 
-| Python AST node | Z3 expression | Notes |
+| Python AST | Z3 expression | Notes |
 |---|---|---|
-| `BinOp(Add)` | `left + right` | |
-| `BinOp(Sub)` | `left - right` | |
-| `BinOp(Mult)` | `left * right` | Nonlinear if both symbolic — may be slow |
-| `BinOp(FloorDiv)` | `left / right` on `IntSort` | Z3 integer division is floor division |
-| `BinOp(Div)` | `left / right` on `RealSort` | Real (not IEEE 754) |
-| `BinOp(Pow)` | `left * left * ...` | Concrete integer exponents 0–3 only |
-| `Compare(Lt)` | `left < right` | |
-| `Compare(Eq)` | `left == right` | |
-| `BoolOp(And)` | `z3.And(...)` | |
-| `BoolOp(Or)` | `z3.Or(...)` | |
-| `UnaryOp(Not)` | `z3.Not(...)` | |
-| `IfExp` (ternary) | `z3.If(cond, a, b)` | |
+| `x + y` | `x + y` | |
+| `x * y` | `x * y` | Nonlinear if both symbolic |
+| `x // y` | `x / y` on `IntSort` | Z3 int division = floor division |
+| `x / y` | `x / y` on `RealSort` | Real, not IEEE 754 |
+| `x ** n` | unrolled multiplication | Concrete `n` in 0--3 only |
+| `if/elif/else` | nested `z3.If` | Path encoding |
+| `a if c else b` | `z3.If(c, a, b)` | |
+| `and`/`or`/`not` (body) | `z3.And`/`z3.Or`/`z3.Not` | |
+| `min(a, b)` | `z3.If(a <= b, a, b)` | |
+| `max(a, b)` | `z3.If(a >= b, a, b)` | |
+| `abs(x)` | `z3.If(x >= 0, x, -x)` | |
 
-!!! note "FloorDiv vs. ToInt"
-    Z3's `/` operator on `IntSort` is integer division (truncating toward negative infinity
-    for positive divisors), which matches Python's `//`. This is *not* the same as
-    `z3.ToInt(real / real)` — provably uses native Z3 integer division for `int // int`.
+!!! note "FloorDiv"
+    Z3's `/` on `IntSort` is floor division (truncating toward negative infinity for
+    positive divisors), matching Python's `//`. This is not `z3.ToInt(real / real)`.
 
-Control flow is translated via **path encoding**: each branch generates a separate Z3
-conditional. For `if/elif/else` chains, each branch contributes a `z3.If` expression for
-the final return value.
+Bounded `for i in range(N)` loops (literal `N`, max 256) are fully unrolled.
 
-Early returns are handled by accumulating a path condition and constructing the
-corresponding conditional Z3 expression once all paths are collected.
+## Verification condition
 
-Bounded `for i in range(N)` loops (where `N` is a compile-time constant) are **fully
-unrolled** — each iteration is inlined into the Z3 formula. This is sound but limited to
-small bounds (max 256 iterations).
-
-## Step 3: Verification condition (VC)
-
-Given precondition $P$, the translated body $F$, and postcondition $Q$:
+Given precondition $P$, translated body $F$, postcondition $Q$:
 
 $$\text{VC} = P(\bar{x}) \Rightarrow Q(\bar{x},\, F(\bar{x}))$$
 
@@ -102,9 +85,7 @@ provably checks $\neg\,\text{VC}$:
 
 $$\text{check}\bigl(\,P(\bar{x}) \;\land\; \neg\,Q(\bar{x},\, \mathit{ret})\,\bigr)$$
 
-where $\mathit{ret}$ is unified with $F(\bar{x})$ via an equality constraint.
-
-## Step 4: SMT query
+## SMT query
 
 ```python
 solver = z3.Solver()
@@ -116,52 +97,44 @@ result = solver.check()  # unsat | sat | unknown
 
 | Result | Meaning | Certificate status |
 |---|---|---|
-| `unsat` | No counterexample exists. Contract holds universally. | `VERIFIED` |
-| `sat` | Z3 found a counterexample. `cert.counterexample` contains the witness. | `COUNTEREXAMPLE` |
-| `unknown` | Solver timed out or gave up. Property may still hold. | `UNKNOWN` |
+| `unsat` | No counterexample exists | `VERIFIED` |
+| `sat` | Counterexample found | `COUNTEREXAMPLE` |
+| `unknown` | Solver timed out | `UNKNOWN` |
 
-## Step 5: Proof certificates
-
-The result is attached to the function as `fn.__proof__` (a frozen `ProofCertificate` instance):
+## Proof certificates
 
 ```python
 @dataclass(frozen=True)
 class ProofCertificate:
     function_name:  str
-    source_hash:    str             # SHA-256 prefix of function source
+    source_hash:    str             # SHA-256 prefix
     status:         Status          # VERIFIED | COUNTEREXAMPLE | UNKNOWN | ...
-    preconditions:  tuple[str, ...] # human-readable Z3 strings
+    preconditions:  tuple[str, ...]
     postconditions: tuple[str, ...]
     counterexample: dict | None     # populated on COUNTEREXAMPLE
-    message:        str             # human-readable summary
-    solver_time_ms: float           # wall-clock milliseconds
+    message:        str
+    solver_time_ms: float
     z3_version:     str
 
     @property
     def verified(self) -> bool: ...  # True iff status == VERIFIED
 ```
 
-Proof certificates are **cached** by content hash (source + contract bytecode).
-Calling `clear_cache()` invalidates the cache and forces re-verification on the next import.
+Cached by content hash (source + contract bytecode). `clear_cache()` forces re-verification.
 
 ## The Trusted Computing Base
 
-The TCB consists of:
+| Component | Role | Risk |
+|---|---|---|
+| `Translator` | AST &rarr; Z3 | Bugs produce unsound proofs |
+| `extract_refinements` | `Annotated` &rarr; Z3 constraints | Small, tested |
+| `python_type_to_z3_sort` | Types &rarr; Z3 sorts | Trivial |
+| Z3 | SMT solver | External, trusted |
 
-1. **The `Translator` class** — Python AST → Z3. Bugs here can produce unsound proofs.
-   The translator is ~500 LOC and unit-tested for every supported construct.
-2. **`extract_refinements`** — `Annotated` markers → Z3 constraints.
-3. **`python_type_to_z3_sort`** — Python types → Z3 sorts.
-4. **Z3 itself** — an external solver maintained by Microsoft Research. provably trusts Z3.
-
-Everything outside the TCB — the `@verified` decorator plumbing, the `ProofCertificate`
-dataclass, the caching layer, `verify_module`, `@runtime_checked` — does not affect
-soundness. A bug outside the TCB can produce incorrect metadata (e.g., a wrong `solver_time`)
-but cannot produce a spurious `verified=True`.
+Everything outside the TCB (decorator plumbing, caching, `verify_module`) cannot
+produce a spurious `verified=True`.
 
 !!! theorem "The strange loop"
-    The self-proof module (`_self_proof.py`) runs the entire TCB on functions the TCB
-    itself uses — `_z3_min`, `_z3_abs`, etc. If a translator regression breaks
-    any of these, CI fails before merge. See [Self-Proof](../self-proof.md).
-
-See [Soundness](soundness.md) for the full epistemological picture.
+    The self-proof module runs the entire TCB on functions it will later verify.
+    If a translator regression breaks `_z3_min` or `clamp`, CI fails before merge.
+    See [Self-Proof](../self-proof.md).

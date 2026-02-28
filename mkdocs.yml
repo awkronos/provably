@@ -1,5 +1,5 @@
 site_name: Provably
-site_description: Proof-carrying Python functions via Z3 — annotate, verify, ship.
+site_description: Z3-backed formal verification for Python — annotate, verify, ship.
 site_url: https://awkronos.github.io/provably
 repo_url: https://github.com/awkronos/provably
 repo_name: awkronos/provably
@@ -34,28 +34,23 @@ theme:
     - navigation.expand
     - navigation.top
     - navigation.footer
-    - navigation.indexes
     - navigation.instant
     - navigation.instant.progress
     - navigation.tracking
     - search.highlight
-    - search.share
     - search.suggest
     - content.code.copy
     - content.code.annotate
     - content.tabs.link
     - content.tooltips
     - toc.follow
-    - announce.dismiss
   icon:
     repo: fontawesome/brands/github
     admonition:
-      example: fontawesome/solid/flask-vial
       proof: fontawesome/solid/check-double
       theorem: fontawesome/solid/circle-play
       note: fontawesome/solid/circle-info
       warning: fontawesome/solid/triangle-exclamation
-      tip: fontawesome/solid/lightbulb
 
 extra_css:
   - stylesheets/custom.css
@@ -80,39 +75,23 @@ plugins:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
-      linenums: false
-      linenums_style: pymdownx-inline
   - pymdownx.inlinehilite
-  - pymdownx.snippets
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.arithmatex:
       generic: true
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - pymdownx.tasklist:
-      custom_checkbox: true
   - attr_list
   - md_in_html
   - tables
-  - footnotes
   - toc:
       permalink: true
-      title: On this page
-  - def_list
 
 extra_javascript:
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 extra:
@@ -124,18 +103,6 @@ extra:
       link: https://pypi.org/project/provably/
       name: provably on PyPI
   generator: false
-  analytics:
-    feedback:
-      title: Was this page helpful?
-      ratings:
-        - icon: material/thumb-up-outline
-          name: This page was helpful
-          data: 1
-          note: Thanks for the feedback!
-        - icon: material/thumb-down-outline
-          name: This page could be improved
-          data: 0
-          note: Thanks for the feedback!
 
 nav:
   - Home: index.md

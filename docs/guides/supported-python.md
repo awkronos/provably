@@ -1,9 +1,6 @@
 # Supported Python Subset
 
-provably translates a restricted subset of Python into Z3 constraints. This page documents
-exactly what is supported, what is not, and why.
-
-## Supported constructs
+## Supported
 
 ### Types
 
@@ -11,49 +8,32 @@ exactly what is supported, what is not, and why.
 |---|---|---|
 | `int` | `IntSort` | Mathematical integers (unbounded) |
 | `float` | `RealSort` | Mathematical reals, not IEEE 754 |
-| `bool` | `BoolSort` | `True` / `False` |
-| `Annotated[T, *markers]` | Same as `T` | Markers become precondition assumptions |
+| `bool` | `BoolSort` | |
+| `Annotated[T, *markers]` | Same as `T` | Markers become preconditions |
 
-### Arithmetic operators
+### Arithmetic
 
-| Operator | Z3 encoding | Caveat |
+| Operator | Z3 encoding | Notes |
 |---|---|---|
-| `x + y` | `x + y` | |
-| `x - y` | `x - y` | |
-| `x * y` | `x * y` | Nonlinear if both symbolic — solver may be slower |
-| `x / y` | `x / y` (real) | `y != 0` must be in `pre` or refinement |
-| `x // y` | `z3.ToInt(x / y)` | Integer floor division |
-| `x % y` | `x - y * z3.ToInt(x / y)` | |
-| `x ** n` | `x * x * ...` (n times) | `n` must be a concrete integer literal 0–3 |
-| `-x` | `-x` | |
-| `+x` | `x` | |
+| `+`, `-` | direct | |
+| `*` | `x * y` | Nonlinear if both symbolic -- may be slow |
+| `/` | real division | `y != 0` must be in `pre` or refinement |
+| `//` | Z3 int division | Floor division on `IntSort` |
+| `%` | `x - y * (x // y)` | |
+| `**n` | unrolled multiply | `n` must be literal 0--3 |
+| `-x`, `+x` | direct | |
 
-### Comparison operators
+### Comparisons
 
-| Operator | Z3 encoding |
-|---|---|
-| `x < y` | `x < y` |
-| `x <= y` | `x <= y` |
-| `x > y` | `x > y` |
-| `x >= y` | `x >= y` |
-| `x == y` | `x == y` |
-| `x != y` | `x != y` |
-
-Chained comparisons (`0 <= x <= 1`) are supported and desugared to `z3.And(0 <= x, x <= 1)`.
+All six: `<`, `<=`, `>`, `>=`, `==`, `!=`. Chained comparisons (`0 <= x <= 1`)
+desugared to `z3.And(...)`.
 
 ### Boolean operators
 
-In function bodies, `and`/`or`/`not` are translated to Z3. In lambdas (contract expressions),
-use `&`/`|`/`~` — see [Contracts](../concepts/contracts.md).
-
-| Operator | Z3 encoding |
-|---|---|
-| `a and b` (body) | `z3.And(a, b)` |
-| `a or b` (body) | `z3.Or(a, b)` |
-| `not a` (body) | `z3.Not(a)` |
-| `a & b` (contract lambda) | `z3.And(a, b)` |
-| `a \| b` (contract lambda) | `z3.Or(a, b)` |
-| `~a` (contract lambda) | `z3.Not(a)` |
+| Context | Syntax | Z3 encoding |
+|---|---|---|
+| Function body | `and`/`or`/`not` | `z3.And`/`z3.Or`/`z3.Not` |
+| Contract lambda | `&`/`\|`/`~` | `z3.And`/`z3.Or`/`z3.Not` |
 
 ### Builtins
 
@@ -63,76 +43,60 @@ use `&`/`|`/`~` — see [Contracts](../concepts/contracts.md).
 | `max(a, b)` | `z3.If(a >= b, a, b)` |
 | `abs(x)` | `z3.If(x >= 0, x, -x)` |
 
-`min` and `max` with more than two arguments are desugared recursively.
+`min`/`max` with 3+ arguments desugared recursively.
 
 ### Control flow
 
-| Construct | Support |
+| Construct | Translation |
 |---|---|
-| `if` / `elif` / `else` | Supported — translated to nested `z3.If` |
-| Early `return` | Supported — translated via path accumulation |
-| Ternary `a if cond else b` | Supported — direct `z3.If` |
-| `pass` | Supported (no-op) |
+| `if`/`elif`/`else` | Nested `z3.If` |
+| Early `return` | Path accumulation |
+| Ternary `a if cond else b` | `z3.If` |
+| `pass` | No-op |
 
-### Variables and constants
+### Variables
 
-| Construct | Support | Notes |
-|---|---|---|
-| Local variable assignment (`x = expr`) | Supported | Substituted symbolically |
-| Module-level `int` / `float` constants | Supported | Injected as concrete Z3 values |
-| Function parameters | Supported | Become Z3 symbolic variables |
+| Construct | Notes |
+|---|---|
+| Local assignment (`x = expr`) | Symbolic substitution |
+| Module-level `int`/`float` constants | Concrete Z3 values |
+| Function parameters | Z3 symbolic variables |
 
-### Calls to verified functions
+### Verified function calls
 
-Calls to functions listed in `contracts=` are supported. See
-[Compositionality](../concepts/compositionality.md).
+Via `contracts=`. See [Compositionality](../concepts/compositionality.md).
 
 ---
 
-## Unsupported constructs
+## Unsupported
 
-| Construct | Why not |
+| Construct | Reason |
 |---|---|
-| `while` loops | Termination is undecidable. Proving loop correctness requires a loop invariant and ranking function — neither can be inferred automatically. |
-| `for` loops (unbounded) | Same reason as `while`. Bounded `for i in range(N)` with literal `N` is unrolled up to 256 iterations. |
-| Recursion | Requires a ranking function to prove termination, and inductive invariants for correctness. These are beyond SMT decidability. |
-| `str`, `list`, `dict`, `set` | Outside the SMT integer/real arithmetic fragment. |
-| `lambda` inside function body | AST structure prevents reliable source extraction. |
-| Class methods with `self` | `self` introduces heap aliasing, outside the supported fragment. |
-| `try` / `except` | Exceptional control flow is not modeled. |
-| Generators, `yield` | Not modeled. |
-| `import` statements in body | Side effects outside the model. |
-| Calls to unverified functions | Raises `TranslationError`. Add the callee to `contracts=` with its own proof. |
-| `x ** y` with symbolic `y` | Z3 cannot represent $x^y$ for symbolic $y$ in linear arithmetic. |
-| Slicing (`a[i:j]`) | Sequences not supported. |
-| Bitwise operators (`&`, `\|`, `^`, `~`, `<<`, `>>`) | Not in the integer/real arithmetic fragment. |
+| `while` loops | Undecidable (requires loop invariant) |
+| Unbounded `for` | Same. Bounded `for i in range(N)` with literal `N` unrolled up to 256. |
+| Recursion | Requires ranking function + inductive invariants |
+| `str`, `list`, `dict`, `set` | Outside SMT arithmetic fragment |
+| `lambda` in body | AST prevents source extraction |
+| `self` methods | Heap aliasing outside fragment |
+| `try`/`except` | Not modeled |
+| Generators, `yield` | Not modeled |
+| `import` in body | Side effects outside model |
+| Unverified calls | `TranslationError`. Add to `contracts=` or inline. |
+| `x ** y` (symbolic `y`) | Not representable in linear arithmetic |
+| Slicing, bitwise ops | Not in arithmetic fragment |
 
 ---
 
-## Tips for Z3-friendly code
+## Tips
 
-**1. Avoid nonlinear arithmetic when possible.**
+**1. Avoid nonlinear arithmetic.** `x * y` with two symbolic variables forces Z3
+into an undecidable fragment. Reformulate if possible.
 
-$x \cdot y$ where both `x` and `y` are symbolic forces Z3 into nonlinear arithmetic,
-which is undecidable in general. Z3 uses heuristics and may return `unknown`. If you can
-express the property without multiplying two symbolic variables, do so.
+**2. Keep functions short.** Split into `@verified` helpers, compose with `contracts=`.
 
-**2. Keep functions short.**
-
-The translator processes the entire function body in one Z3 context. Large functions with
-many branches produce large formulas. Split complex logic into smaller `@verified` helpers
-and use `contracts=` to compose them.
-
-**3. Use `pre=` to bound the input domain.**
-
-Tighter preconditions make the solver's job easier:
+**3. Bound inputs.** Tighter preconditions make the solver's job easier:
 
 ```python
-# Harder for Z3:
-@verified(post=lambda x, result: result >= 0)
-def f(x: int) -> int: ...
-
-# Easier: x is bounded
 @verified(
     pre=lambda x: (0 <= x) & (x <= 1000),
     post=lambda x, result: result >= 0,
@@ -140,33 +104,24 @@ def f(x: int) -> int: ...
 def f(x: int) -> int: ...
 ```
 
-**4. Use `Annotated` markers for parameter bounds.**
-
-Equivalent to `pre=`, but attached to the type — cleaner syntax and better IDE support:
+**4. Use `Annotated` markers** instead of `pre=` for parameter bounds:
 
 ```python
-from provably.types import Between
-
 @verified(post=lambda x, result: result >= 0)
 def f(x: Annotated[int, Between(0, 1000)]) -> int: ...
 ```
 
-**5. Guard division with `NotEq(0)`.**
+**5. Guard division** with `NotEq(0)`:
 
 ```python
-from provably.types import NotEq
-
-# TranslationError without the guard (or a pre= lambda):
 def safe_div(a: float, b: Annotated[float, NotEq(0)]) -> float:
     return a / b
 ```
 
-**6. If Z3 times out (`cert.status == Status.UNKNOWN`):**
+**6. Timeout?** Increase it, eliminate nonlinear terms, split the function, or fall back
+to `@runtime_checked`:
 
 ```python
 from provably import configure
-configure(timeout_ms=30_000)   # default: 5000ms
+configure(timeout_ms=30_000)
 ```
-
-Then `clear_cache()` and re-import. If timeout persists: eliminate nonlinear terms,
-break the function into smaller helpers, or use `@runtime_checked` as a fallback.

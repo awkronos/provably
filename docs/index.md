@@ -1,11 +1,10 @@
 # provably
 
-**Proof-carrying Python — Z3-backed formal verification via decorators and refinement types**
+**Z3-backed formal verification for Python — via decorators and refinement types**
 
 <div class="hero-badges">
   <span class="hero-badge hero-badge--self-proving">&#10003; Self-proving</span>
   <span class="hero-badge">Zero call-site overhead</span>
-  <span class="hero-badge">Mathematical proofs, not tests</span>
   <span class="hero-badge">Counterexample extraction</span>
 </div>
 
@@ -25,29 +24,25 @@ def integer_sqrt(x: int) -> int:
     return n
 
 integer_sqrt.__proof__.verified   # True
-str(integer_sqrt.__proof__)       # "[Q.E.D.] integer_sqrt"
 integer_sqrt.__proof__.status     # Status.VERIFIED
+str(integer_sqrt.__proof__)       # "[Q.E.D.] integer_sqrt"
 ```
 
 </div>
 
-provably translates Python functions into Z3 constraints and checks them with an SMT solver.
-A `verified=True` result is a **mathematical proof** — not a test, not a sample, not a fuzzer guess.
-It means the contract holds for **every possible input** satisfying the precondition, simultaneously
-and unconditionally.
-
-**The pipeline:**
+`verified=True` is a **mathematical proof** -- not a test, not a sample.
+The contract holds for **every possible input** satisfying the precondition.
 
 <div class="proof-flow">
   <span class="proof-flow-step">Python source</span>
-  <span class="proof-flow-arrow">→</span>
+  <span class="proof-flow-arrow">&rarr;</span>
   <span class="proof-flow-step">AST parse</span>
-  <span class="proof-flow-arrow">→</span>
+  <span class="proof-flow-arrow">&rarr;</span>
   <span class="proof-flow-step">Z3 constraints</span>
-  <span class="proof-flow-arrow">→</span>
-  <span class="proof-flow-step">SMT query ¬post</span>
-  <span class="proof-flow-arrow">→</span>
-  <span class="proof-flow-step proof-flow-step--final">UNSAT → Q.E.D.</span>
+  <span class="proof-flow-arrow">&rarr;</span>
+  <span class="proof-flow-step">SMT query &not;post</span>
+  <span class="proof-flow-arrow">&rarr;</span>
+  <span class="proof-flow-step proof-flow-step--final">UNSAT &rarr; Q.E.D.</span>
 </div>
 
 ## Install
@@ -64,26 +59,22 @@ and unconditionally.
     uv add provably
     ```
 
-Z3-solver is included as a dependency.
-
 ## What makes provably different
 
 <div class="feature-grid">
 
 <div class="feature-card">
 
-### Proof certificates, not test results
+### Proof certificates
 
-Z3 returns `UNSAT` — no counterexample exists. The result is attached to `func.__proof__`
-as a frozen `ProofCertificate`. One proof per function, computed at import time, zero
-overhead at every call site.
+Z3 returns `UNSAT` -- no counterexample exists. The certificate attaches to `func.__proof__`,
+computed at import time. Zero overhead at every call site.
 
 ```python
 cert = my_func.__proof__
 cert.verified       # True
 cert.status         # Status.VERIFIED
 cert.solver_time_ms # 2.4
-cert.z3_version     # "4.13.0"
 ```
 
 </div>
@@ -92,8 +83,8 @@ cert.z3_version     # "4.13.0"
 
 ### Counterexample extraction
 
-When a contract fails, Z3 produces the exact witness — the smallest input that breaks
-your specification. Not a fuzzer guess. A mathematically guaranteed counterexample.
+When a contract fails, Z3 produces the exact witness -- the smallest input
+that breaks your specification.
 
 ```python
 @verified(post=lambda n, result: result * result == n)
@@ -102,7 +93,6 @@ def bad_sqrt(n: int) -> int:
 
 bad_sqrt.__proof__.counterexample
 # {'n': 2, '__return__': 1}
-# 1 * 1 = 1 ≠ 2. Q.E.D. it's wrong.
 ```
 
 </div>
@@ -111,8 +101,8 @@ bad_sqrt.__proof__.counterexample
 
 ### Refinement types
 
-Embed constraints directly in `typing.Annotated` signatures. Parameter bounds become
-Z3 preconditions automatically — no separate `pre=` lambda needed.
+Embed constraints in `typing.Annotated` signatures. Parameter bounds become
+Z3 preconditions automatically.
 
 ```python
 from provably.types import Between, Gt, NonNegative
@@ -123,6 +113,7 @@ def scale(
     x: Annotated[float, Gt(0)],
 ) -> NonNegative:
     return p * x
+# scale.__proof__.verified -> True
 ```
 
 </div>
@@ -131,9 +122,7 @@ def scale(
 
 ### Compositionality
 
-Call verified helpers from verified functions. provably reuses their contracts without
-re-examining their bodies — classical assume/guarantee reasoning. Build large proofs from
-small pieces.
+Reuse verified contracts without re-examining bodies -- classical assume/guarantee reasoning.
 
 ```python
 @verified(
@@ -142,6 +131,7 @@ small pieces.
 )
 def manhattan(x: float, y: float) -> float:
     return abs_val(x) + abs_val(y)
+# manhattan.__proof__.verified -> True
 ```
 
 </div>
@@ -150,9 +140,7 @@ def manhattan(x: float, y: float) -> float:
 
 ### `@runtime_checked`
 
-Assert contracts at every call without invoking the solver. Ideal for production guards,
-unsupported constructs, or when you want zero solver overhead at runtime. Raises
-`ContractViolationError` on any violation.
+Assert contracts at every call without the solver. Raises `ContractViolationError` on violation.
 
 ```python
 @runtime_checked(
@@ -171,11 +159,9 @@ precise_sqrt(-1.0)  # raises ContractViolationError
 
 ### Self-proving
 
-<span class="proof-qed proof-qed--glow">Q.E.D.</span>&nbsp; provably uses `@verified` to prove its own internal
-functions on every CI push. Ten self-proofs, all `VERIFIED`. If the tool can't prove
-`min`, `max`, `abs`, `clamp`, and `relu` correct, the build breaks.
-
-The strange loop is load-bearing — see [Self-Proof](self-proof.md).
+<span class="proof-qed proof-qed--glow">Q.E.D.</span>&nbsp; provably proves its own internal
+functions on every CI push. If it can't prove `min`, `max`, `abs`, `clamp`, and `relu` correct,
+the build breaks. See [Self-Proof](self-proof.md).
 
 </div>
 
@@ -188,10 +174,10 @@ The strange loop is load-bearing — see [Self-Proof](self-proof.md).
 | [Getting started](getting-started.md) | Install, first proof, what Q.E.D. means |
 | [How it works](concepts/how-it-works.md) | AST translation, Z3 queries, the TCB |
 | [Refinement types](concepts/refinement-types.md) | `Annotated` markers, convenience aliases |
-| [Contracts](concepts/contracts.md) | Pre/post lambda syntax, `&`/`\|` vs `and`/`or` |
+| [Contracts](concepts/contracts.md) | Pre/post lambda syntax, `&`/`|` vs `and`/`or` |
 | [Compositionality](concepts/compositionality.md) | Modular verification, proof dependencies |
 | [Soundness](concepts/soundness.md) | What "proven" means, epistemological limits |
 | [Supported Python](guides/supported-python.md) | Supported and unsupported constructs |
-| [Pytest integration](guides/pytest.md) | CI assertions, `verify_module()` in tests |
-| [Errors and debugging](guides/errors.md) | Reading counterexamples, `TranslationError` fixes |
-| [Self-proof](self-proof.md) | The strange loop — provably proves itself |
+| [Pytest integration](guides/pytest.md) | CI assertions, `verify_module()` |
+| [Errors and debugging](guides/errors.md) | Counterexamples, `TranslationError` fixes |
+| [Self-proof](self-proof.md) | The strange loop -- provably proves itself |
