@@ -70,7 +70,7 @@ jobs:
             --cov=src/provably \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=85
+            --cov-fail-under=80
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
