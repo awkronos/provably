@@ -44,7 +44,12 @@ class TranslationResult:
     """Result of translating a function body to Z3 constraints."""
 
     return_expr: Any  # z3.ExprRef | None
-    constraints: list[Any] = field(default_factory=list)  # z3.BoolRef obligations
+    constraints: list[Any] = field(
+        default_factory=list
+    )  # z3.BoolRef assumptions (callee posts, asserts)
+    obligations: list[Any] = field(
+        default_factory=list
+    )  # z3.BoolRef that MUST be proven (callee pres)
     env: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
@@ -105,7 +110,8 @@ class Translator:
         self.param_types = param_types or {}
         self.verified_contracts = verified_contracts or {}
         self.closure_vars = closure_vars or {}
-        self._constraints: list[Any] = []
+        self._constraints: list[Any] = []  # assumptions (callee postconditions, asserts)
+        self._obligations: list[Any] = []  # proof obligations (callee preconditions)
         self._warnings: list[str] = []
 
     def translate(
@@ -126,12 +132,14 @@ class Translator:
             any non-fatal warnings.
         """
         self._constraints = []
+        self._obligations = []
         self._warnings = []
         env = dict(param_vars)
         env, ret = self._block(func_ast.body, env)
         return TranslationResult(
             return_expr=ret,
             constraints=list(self._constraints),
+            obligations=list(self._obligations),
             env=env,
             warnings=list(self._warnings),
         )
@@ -145,7 +153,10 @@ class Translator:
         for i, stmt in enumerate(stmts):
             if isinstance(stmt, ast.Return):
                 if stmt.value is None:
-                    return env, z3.BoolVal(True)
+                    raise TranslationError(
+                        "Bare return (None) not supported — verified functions must "
+                        f"return a value (line {getattr(stmt, 'lineno', '?')})"
+                    )
                 return env, self._expr(stmt.value, env)
 
             if isinstance(stmt, ast.Assign | ast.AnnAssign):
@@ -174,7 +185,7 @@ class Translator:
                     self._expr(stmt.value, env)  # side-effect only
 
             else:
-                self._warnings.append(
+                raise TranslationError(
                     f"Unsupported statement: {type(stmt).__name__}"
                     f" (line {getattr(stmt, 'lineno', '?')})"
                 )
@@ -401,17 +412,10 @@ class Translator:
         if isinstance(value, float):
             return z3.RealVal(str(value))
         if isinstance(value, str):
-            # String constants cannot be represented in Z3's arithmetic/bool logic.
-            # Emit a warning rather than crashing; callers should not rely on
-            # the returned expression for proof obligations.
-            self._warnings.append(
-                f"String constant {value!r} is not representable in Z3 — "
-                "it will be treated as an opaque symbolic term"
+            raise TranslationError(
+                f"String constant {value!r} not supported — "
+                "Z3 arithmetic/boolean fragment has no string sort"
             )
-            # Return a fresh unconstrained Z3 integer as a placeholder.
-            # This keeps the translator running but the resulting proof
-            # will likely be UNKNOWN or produce a spurious certificate.
-            return z3.Int(f"__str_{hash(value) & 0xFFFF:04x}__")
         raise TranslationError(f"Unsupported constant type: {type(value).__name__}")
 
     def _binop(self, op: ast.operator, left: Any, right: Any) -> Any:
@@ -519,19 +523,18 @@ class Translator:
         f_decl = z3.Function(fname, *param_sorts, return_sort)
         result = f_decl(*args)
 
-        # The callee's precondition is an OBLIGATION for the caller
+        # The callee's precondition is an OBLIGATION — caller must prove it holds
         pre_fn = contract.get("pre")
         if pre_fn is not None:
             pre_constraint = pre_fn(*args)
             if isinstance(pre_constraint, z3.BoolRef):
-                self._constraints.append(pre_constraint)
+                self._obligations.append(pre_constraint)
 
-        # The callee's postcondition is an ASSUMPTION we can use
+        # The callee's postcondition is an ASSUMPTION — we can rely on it
         post_fn = contract.get("post")
         if post_fn is not None:
             post_constraint = post_fn(*args, result)
             if isinstance(post_constraint, z3.BoolRef):
-                # Add positively — we assume this holds
                 self._constraints.append(post_constraint)
 
         return result

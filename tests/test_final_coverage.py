@@ -67,18 +67,16 @@ def _translate(
 
 
 class TestTranslatorLine148_BareReturn:
-    def test_bare_return_yields_true(self) -> None:
-        """A bare `return` (no value) translates to z3.BoolVal(True)."""
+    def test_bare_return_raises(self) -> None:
+        """A bare `return` (no value) raises TranslationError — soundness requires a value."""
         src = """
 def f(x):
     return
 """
         func_ast = _parse_func(src)
         t = Translator()
-        result = t.translate(func_ast, {"x": z3.Real("x")})
-        assert result.return_expr is not None
-        # BoolVal(True) is a Z3 bool
-        assert z3.is_true(result.return_expr)
+        with pytest.raises(TranslationError, match="Bare return"):
+            t.translate(func_ast, {"x": z3.Real("x")})
 
 
 # ===========================================================================
@@ -1510,8 +1508,8 @@ class TestEngineZ3ValBoolDirect:
 
 
 class TestEngineLine464_PostNonBoolRef:
-    def test_post_returning_non_boolref_skipped(self) -> None:
-        """When post() returns a non-BoolRef value, it is not added to post_parts (branch 464->473)."""
+    def test_post_returning_non_boolref_is_error(self) -> None:
+        """When post() returns a non-BoolRef, it's a TRANSLATION_ERROR — not silently skipped."""
         from provably.engine import clear_cache as _clear
 
         _clear()
@@ -1519,15 +1517,12 @@ class TestEngineLine464_PostNonBoolRef:
         def unique_post_nonbool_fn(x: float) -> float:
             return x + 1.0
 
-        # post returns an integer (not a z3.BoolRef) — should produce SKIPPED
-        # because post_parts stays empty → "Nothing to prove"
         cert = verify_function(
             unique_post_nonbool_fn,
             post=lambda x, r: 42,  # returns int, not BoolRef
         )
-        # post_parts is empty → SKIPPED
-        assert cert.status == Status.SKIPPED
-        assert "nothing to prove" in cert.message.lower()
+        assert cert.status == Status.TRANSLATION_ERROR
+        assert "BoolRef" in cert.message
 
 
 # ---------------------------------------------------------------------------

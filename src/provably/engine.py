@@ -240,11 +240,28 @@ def _source_hash(text: str) -> str:
 
 
 def _contract_sig(fn: Callable[..., Any] | None) -> str:
-    """Stable signature for a contract callable (bytecode-based)."""
+    """Stable signature for a contract callable.
+
+    Hashes bytecode, constants, defaults, and closure cell values
+    to avoid collisions between contracts that share bytecode structure
+    but differ in embedded values.
+    """
     if fn is None:
         return "none"
     try:
-        return hashlib.sha256(fn.__code__.co_code).hexdigest()[:12]
+        code = fn.__code__
+        parts = [code.co_code, repr(code.co_consts)]
+        # Include closure cell values
+        if fn.__closure__:
+            for cell in fn.__closure__:
+                try:
+                    parts.append(repr(cell.cell_contents))
+                except ValueError:
+                    parts.append("__empty_cell__")
+        # Include defaults
+        if fn.__defaults__:
+            parts.append(repr(fn.__defaults__))
+        return hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()[:16]
     except AttributeError:
         return repr(fn)
 
@@ -470,6 +487,15 @@ def verify_function(
             if isinstance(pre_z3, z3.BoolRef):
                 s.add(pre_z3)
                 pre_strs.append(str(pre_z3))
+            else:
+                cert = _err(
+                    fname,
+                    source,
+                    f"Precondition returned {type(pre_z3).__name__}, expected z3.BoolRef. "
+                    "Use & instead of 'and', | instead of 'or'.",
+                )
+                _proof_cache[cache_key] = cert
+                return cert
         except Exception as e:
             cert = _err(
                 fname,
@@ -487,9 +513,13 @@ def verify_function(
                 s.add(constraint)
                 pre_strs.append(str(constraint))
 
-    # 3. Add body constraints (from assert statements + verified calls)
+    # 3. Add body constraints (assumptions: callee postconditions, asserts)
     for c in result.constraints:
         s.add(c)
+
+    # 3b. Collect proof obligations (callee preconditions that caller must prove)
+    # These go into the postcondition — they must hold, not just be assumed.
+    caller_obligations: list[Any] = list(result.obligations)
 
     # 4. Build the combined postcondition
     post_parts: list[Any] = []
@@ -502,6 +532,14 @@ def verify_function(
             if isinstance(post_z3, z3.BoolRef):
                 post_parts.append(post_z3)
                 post_strs.append(str(post_z3))
+            else:
+                cert = _err(
+                    fname,
+                    source,
+                    f"Postcondition returned {type(post_z3).__name__}, expected z3.BoolRef.",
+                )
+                _proof_cache[cache_key] = cert
+                return cert
         except Exception as e:
             cert = _err(fname, source, f"Postcondition error: {e}")
             _proof_cache[cache_key] = cert
@@ -513,6 +551,11 @@ def verify_function(
         for constraint in extract_refinements(ret_typ, ret):
             post_parts.append(constraint)
             post_strs.append(str(constraint))
+
+    # Add caller obligations (callee preconditions) to postcondition set
+    for ob in caller_obligations:
+        post_parts.append(ob)
+        post_strs.append(f"obligation: {ob}")
 
     # Nothing to prove
     if not post_parts:

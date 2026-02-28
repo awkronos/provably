@@ -40,7 +40,8 @@ from provably.translator import TranslationError, Translator
 
 
 class TestTranslatorStringConstant:
-    def test_string_constant_emits_warning(self) -> None:
+    def test_string_constant_raises(self) -> None:
+        """String constants raise TranslationError — not silently approximated."""
         src = """
 def f(x):
     y = "hello"
@@ -48,9 +49,8 @@ def f(x):
 """
         func_ast = ast.parse(textwrap.dedent(src)).body[0]
         t = Translator()
-        result = t.translate(func_ast, {"x": z3.Real("x")})
-        assert result.return_expr is not None
-        assert any("String constant" in w for w in result.warnings)
+        with pytest.raises(TranslationError, match="String constant"):
+            t.translate(func_ast, {"x": z3.Real("x")})
 
     def test_unsupported_constant_type_raises(self) -> None:
         """bytes, None, etc. should raise TranslationError."""
