@@ -1,4 +1,0 @@
-# file: /Users/schizodactyl/projects/provably/src/provably/hypothesis.py
-# hypothesis_version: 6.139.2
-
-[1000, '__return__', 'allow_infinity', 'allow_nan', 'ce', 'exclude_max', 'exclude_min', 'max_value', 'min_value', 'n']
