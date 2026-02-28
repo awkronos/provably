@@ -110,17 +110,20 @@ constraints = extract_refinements(Annotated[float, Between(0, 1)], x)
 
 ## Return type annotations
 
-provably does **not** currently extract return type refinements into postconditions.
-Use `post=` for that. The annotations still document intent:
+provably extracts return type refinements into postconditions automatically.
+A return annotation like `-> Annotated[float, Between(0, 1)]` becomes a proof
+obligation just like an explicit `post=`:
 
 ```python
-@verified(post=lambda x, result: (0.0 <= result) & (result <= 1.0))
+@verified()
 def clamp01(x: float) -> Annotated[float, Between(0, 1)]:
     if x < 0.0: return 0.0
     if x > 1.0: return 1.0
     return x
-# clamp01.__proof__.verified -> True
+# clamp01.__proof__.verified -> True (return type refinement is proven)
 ```
+
+You can combine return annotations with an explicit `post=` -- both are checked.
 
 ## Type checker compatibility
 

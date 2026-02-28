@@ -199,8 +199,9 @@ def verified(
         :class:`~provably.engine.ProofCertificate` attached as
         ``func.__proof__``.
 
-    The decorated function is identical to the original — no overhead is
-    added to call sites (unless ``check_contracts=True``).
+    The decorated function is wrapped in a thin ``functools.wraps``
+    passthrough.  No solver overhead at call time (unless
+    ``check_contracts=True``, which adds runtime contract checks).
 
     Async functions are not translated (Z3 does not support coroutine bodies).
     They receive a ``SKIPPED`` certificate and the wrapper is a passthrough.

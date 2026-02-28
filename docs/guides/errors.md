@@ -9,22 +9,23 @@ from provably import verified
 
 @verified(
     pre=lambda n: n >= 0,
-    post=lambda n, result: result * result == n,
+    post=lambda n, result: result * result == n,  # wrong: n//2 is not sqrt
 )
-def isqrt(n: int) -> int:
-    r = 0
-    while (r + 1) * (r + 1) <= n:
-        r += 1
-    return r
+def bad_sqrt(n: int) -> int:
+    return n // 2
 
-cert = isqrt.__proof__
+cert = bad_sqrt.__proof__
 cert.verified        # False
 cert.status          # Status.COUNTEREXAMPLE
-cert.counterexample  # {'n': 2, '__return__': 1}
-# isqrt(2) = 1, but 1*1 != 2
+cert.counterexample  # {'n': 3, '__return__': 1}
+# 3 // 2 = 1, but 1*1 != 3
 ```
 
 Fields: one entry per parameter (original names) plus `__return__` for the return value.
+
+!!! note "While loops produce `TRANSLATION_ERROR`, not counterexamples"
+    If the function body uses a `while` loop, the translator rejects it
+    before Z3 runs. The status will be `TRANSLATION_ERROR`, not `COUNTEREXAMPLE`.
 
 ---
 
@@ -34,10 +35,10 @@ Raised at decoration time when the translator encounters an unsupported construc
 
 | Message | Fix |
 |---|---|
-| `Unsupported node type: While` | Remove the loop. Use closed-form or a `@verified` helper. |
-| `Call to 'f' is not in contracts=` | Add to `contracts=` with its own proof, or inline. |
-| `Module constant 'X' has type str` | Only `int`/`float` constants are supported. |
-| `Exponent must be a concrete integer literal` | Replace `x ** n` with `x ** 2` or `x * x`. |
+| `Unsupported statement: While` | Remove the loop. Use closed-form or a `@verified` helper. |
+| `Unknown function 'f' ... Add @verified or register in verified_contracts` | Add to `contracts=` with its own proof, or inline. |
+| `String constant '...' not supported` | Only `int`/`float`/`bool` constants are supported. |
+| `Only constant integer exponents 0–3 supported for **` | Replace `x ** n` with `x ** 2` or `x * x`. |
 | `No Z3 sort for Python type: list` | Only `int`, `float`, `bool`, `Annotated` wrappers. |
 
 ---

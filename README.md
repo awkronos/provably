@@ -110,7 +110,8 @@ manhattan.__proof__.verified  # True
 | `min`, `max`, `abs` | Yes |
 | `Annotated` refinement types | Yes |
 | Calls via `contracts=` | Yes |
-| `while`/`for` loops | No |
+| `while` loops, unbounded `for` | No |
+| `for i in range(N)` (literal N, max 256) | Yes (unrolled) |
 | Recursion | No |
 | `str`, `list`, `dict` | No |
 
@@ -118,7 +119,7 @@ manhattan.__proof__.verified  # True
 
 | Library | Approach | Proof strength | Call-site overhead |
 |---|---|---|---|
-| **provably** | SMT / Z3 | Mathematical proof | Zero |
+| **provably** | SMT / Z3 | Mathematical proof | Zero solver overhead |
 | `deal` | Runtime contracts | Bug finding | Per-call |
 | `icontract` | Runtime contracts | Bug finding | Per-call |
 | `CrossHair` | Symbolic execution | Property testing | Test-time |

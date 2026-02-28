@@ -24,7 +24,7 @@ Z3's quantifier-free arithmetic is decidable -- the solver always terminates.
 While loops make verification undecidable: you need a loop invariant, and invariant
 synthesis is an open research problem. provably rejects them with `TranslationError`.
 
-Bounded `for i in range(N)` with literal `N` is planned.
+Bounded `for i in range(N)` with literal `N` is supported (unrolled up to 256 iterations).
 See [Supported Python](guides/supported-python.md).
 
 ---
@@ -55,7 +55,7 @@ No. Complementary.
 | Integration / I/O / network | No | Yes |
 | Performance | No | Yes |
 | Concurrency | No | Yes |
-| Unsupported constructs | `SKIPPED` | Yes |
+| Unsupported constructs | `TRANSLATION_ERROR` | Yes |
 
 Use `@verified` for pure functions with mathematical contracts.
 Use tests for everything else.
@@ -132,7 +132,7 @@ cert = typing.cast(ProofCertificate, getattr(my_func, "__proof__"))
 | When | Import time | Every call |
 | Requires Z3 | Yes | No |
 | Coverage | All inputs (proof) | Only inputs passed |
-| Call-site overhead | Zero | One lambda eval |
+| Call-site overhead | Thin wrapper (no solver) | One lambda eval |
 | Counterexamples | Automatic | N/A |
 | Unsupported constructs | `TranslationError` | Always works |
 

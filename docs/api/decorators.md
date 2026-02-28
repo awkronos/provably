@@ -10,7 +10,8 @@ from provably.decorators import VerificationError, ContractViolationError
 ## `@verified`
 
 Prove a function's pre/post contract using Z3 at decoration time. Attaches a
-`ProofCertificate` as `fn.__proof__`. Zero call-site overhead unless `check_contracts=True`.
+`ProofCertificate` as `fn.__proof__`. No solver runs at call time. A thin
+`functools.wraps` wrapper is applied; `check_contracts=True` adds runtime contract checks.
 
 ```python
 @verified(

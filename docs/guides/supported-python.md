@@ -43,7 +43,7 @@ desugared to `z3.And(...)`.
 | `max(a, b)` | `z3.If(a >= b, a, b)` |
 | `abs(x)` | `z3.If(x >= 0, x, -x)` |
 
-`min`/`max` with 3+ arguments desugared recursively.
+`min`/`max` accept exactly 2 arguments. 3+ arguments are not supported.
 
 ### Control flow
 

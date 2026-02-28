@@ -9,7 +9,7 @@ Versioning: [SemVer](https://semver.org/).
 
 ### Added
 
-- `@verified` decorator: `pre`, `post`, `contracts`, `timeout_ms`, `raise_on_failure`, `check_contracts`, `skip`.
+- `@verified` decorator: `pre`, `post`, `contracts`, `timeout_ms`, `raise_on_failure`, `check_contracts`.
 - `ProofCertificate`: frozen dataclass with `verified` property, `to_json()`/`from_json()`, counterexample extraction.
 - `@runtime_checked`: call-time pre/post checking without Z3. Raises `ContractViolationError`.
 - `VerificationError` for `raise_on_failure=True`.
@@ -22,7 +22,7 @@ Versioning: [SemVer](https://semver.org/).
 - Proof caching by content hash. `clear_cache()`.
 - `z3-solver` as required dependency.
 - Full type annotations (`py.typed`). Passes mypy strict.
-- Python 3.11 / 3.12 / 3.13.
+- Python 3.10 / 3.11 / 3.12 / 3.13.
 
 ---
 

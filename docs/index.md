@@ -4,7 +4,7 @@
 
 <div class="hero-badges">
   <span class="hero-badge hero-badge--self-proving">&#10003; Self-proving</span>
-  <span class="hero-badge">Zero call-site overhead</span>
+  <span class="hero-badge">Zero solver overhead at call time</span>
   <span class="hero-badge">Counterexample extraction</span>
 </div>
 
@@ -70,7 +70,7 @@ The contract holds for **every possible input** satisfying the precondition.
 ### Proof certificates
 
 Z3 returns `UNSAT` -- no counterexample exists. The certificate attaches to `func.__proof__`,
-computed at import time. Zero overhead at every call site.
+computed at import time. No solver runs at call time.
 
 ```python
 cert = my_func.__proof__
