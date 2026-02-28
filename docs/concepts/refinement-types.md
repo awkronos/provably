@@ -67,7 +67,8 @@ $$x \neq \text{val}$$
 ```python
 from provably.types import NotEq
 
-def f(x: Annotated[float, NotEq(0)]) -> float: ...   # x != 0  (safe divisor)
+def safe_div(x: float, y: Annotated[float, NotEq(0)]) -> float:
+    return x / y   # y != 0 is now a precondition; division is safe
 ```
 
 ### Callable markers
@@ -84,6 +85,7 @@ def is_even(v):
 @verified(post=lambda n, result: result % 2 == 0)
 def double(n: Annotated[int, is_even]) -> int:
     return n * 2
+# double.__proof__.verified → True
 ```
 
 ## Composing markers
@@ -100,7 +102,7 @@ n: Annotated[int, Between(1, 99), NotEq(50)]
 
 ## Convenience aliases
 
-Three pre-built aliases are provided as module-level constants:
+Three pre-built aliases are available as module-level constants:
 
 | Alias | Expands to | Meaning |
 |---|---|---|
@@ -111,8 +113,12 @@ Three pre-built aliases are provided as module-level constants:
 ```python
 from provably.types import Positive, NonNegative, UnitInterval
 
-def norm(x: Positive) -> UnitInterval:
-    ...
+def norm(x: Positive) -> UnitInterval: ...
+
+@verified(post=lambda p, q, result: result >= 0)
+def blend(p: UnitInterval, q: UnitInterval) -> NonNegative:
+    return p * q + (1 - p) * (1 - q)
+# blend.__proof__.verified → True
 ```
 
 These are `typing.Annotated` types, so they compose:
@@ -129,37 +135,39 @@ SmallPositive = Annotated[Positive, Le(1)]
 
 When provably sees a parameter annotated with `Annotated[T, *markers]`, it calls
 `extract_refinements(annotation, z3_var)` to produce a list of `z3.BoolRef` constraints.
-These are added to the solver before the precondition lambda, so they act as background
+These are added to the solver before the precondition lambda, acting as background
 assumptions for all proofs involving that function.
 
-The `extract_refinements` function is public API — you can call it directly if you are
-building tooling on top of provably:
+`extract_refinements` is public API — you can call it directly if you are building
+tooling on top of provably:
 
 ```python
 import z3
+from typing import Annotated
 from provably.types import extract_refinements, Between
 
 x = z3.Real('x')
 constraints = extract_refinements(Annotated[float, Between(0, 1)], x)
-# [x >= 0, x <= 1]
+# [x >= 0.0, x <= 1.0]
 ```
 
 ## Refinements on return types
 
 You can annotate the return type with refinement markers. provably does **not** currently
 extract these automatically into the postcondition (use `post=` for that), but the
-annotations are readable by other tools and document intent precisely:
+annotations document intent precisely and are readable by other tools:
 
 ```python
-@verified(post=lambda x, result: (0 <= result) & (result <= 1))
+@verified(post=lambda x, result: (0.0 <= result) & (result <= 1.0))
 def clamp01(x: float) -> Annotated[float, Between(0, 1)]:
-    if x < 0: return 0.0
-    if x > 1: return 1.0
+    if x < 0.0: return 0.0
+    if x > 1.0: return 1.0
     return x
+# clamp01.__proof__.verified → True
 ```
 
 ## Type checker compatibility
 
 All markers are plain Python objects. `Annotated[float, Ge(0)]` is valid `typing.Annotated`
 syntax and passes through mypy, pyright, and beartype without errors. The markers are
-ignored by type checkers (they are not `typing` protocol objects), so there is no conflict.
+ignored by type checkers — they are not `typing` protocol objects — so there is no conflict.

@@ -17,7 +17,7 @@ def f(x: int, y: int) -> int: ...
 - `pre` receives the same parameter names as the function, in order.
 - `post` receives the same parameter names **plus `result` as the last argument**, bound to
   the symbolic return value.
-- Both must return a Z3 boolean expression. The lambda body is passed through the same
+- Both must return a Z3 boolean expression. The lambda body passes through the same
   AST pipeline as the function body.
 
 ## The `result` convention
@@ -36,8 +36,8 @@ def collatz_step(n: int) -> int:
     return 3 * n + 1
 
 # For any n > 0:
-# - result > 0  (always positive)
-# - result <= n  (weakens toward fixed point n=1)
+#   result > 0  (always positive)
+#   result <= n  (weakens toward fixed point n=1... for most n)
 # collatz_step.__proof__.verified → True
 ```
 
@@ -45,13 +45,12 @@ The name `result` is fixed — do not use a different name.
 
 ## `&` / `|` / `~` — not `and` / `or` / `not`
 
-In pre/post lambdas for `@verified`, you must use the bitwise operators `&`, `|`, `~`
+In pre/post lambdas for `@verified`, use the bitwise operators `&`, `|`, `~`
 for logical AND, OR, NOT. Python's `and` / `or` short-circuit and do **not** produce
-Z3 `BoolRef` objects — they will silently return one of their operands as a Python
-value, not a Z3 constraint:
+Z3 `BoolRef` objects — they silently return one of their operands as a Python value:
 
 ```python
-# WRONG — 'and' returns the second Z3 expression, not z3.And(...)
+# WRONG — 'and' returns the second Z3 expression, dropping the first conjunct
 post=lambda a, b, result: result >= 0 and result < b
 
 # CORRECT — & builds a z3.And expression
@@ -60,18 +59,15 @@ post=lambda a, b, result: (result >= 0) & (result < b)
 
 !!! warning "Silent failure mode"
     `result >= 0 and result < b` does not raise an error — it returns `result < b`
-    as the postcondition, silently dropping the first conjunct. This can produce a
-    proof that appears to verify a weaker contract than intended. Always use `&`.
-
-In `pre` lambdas with numeric comparisons (no Z3 variables yet created), plain `and`
-may appear to work, but `&` is always safer and consistent.
+    as the entire postcondition, silently dropping `result >= 0`. This can produce a
+    proof of a weaker contract than intended. Always use `&`, `|`, `~`.
 
 For `@runtime_checked`, plain `and` / `or` / `not` work correctly because there are no
 Z3 expressions involved.
 
 ## Multiple postconditions
 
-Combine with `&` for multiple conditions in a single lambda:
+Combine with `&`:
 
 ```python
 @verified(
@@ -97,8 +93,9 @@ possible inputs:
 def my_abs(x: int) -> int:
     return x if x >= 0 else -x
 
-# Proves: for ALL integers x (no precondition), abs returns x or -x
-# and the result is non-negative.
+# Proves: for ALL integers x (no precondition whatsoever),
+# abs returns x or -x and the result is non-negative.
+# my_abs.__proof__.verified → True
 ```
 
 ## Accessing module-level constants
@@ -124,7 +121,7 @@ def cap(x: int) -> int:
 # cap.__proof__.verified → True
 ```
 
-Module-level constants that are not `int` or `float` will result in `TRANSLATION_ERROR`.
+Module-level constants that are not `int` or `float` will result in `TranslationError`.
 
 ## Compositionality via `contracts=`
 
@@ -137,19 +134,18 @@ Prefer **stronger** postconditions. A weak postcondition that is easy to prove m
 be useful — it allows too many implementations.
 
 ```python
-# WEAK: only proves non-negative — consistent with returning 0 always
+# WEAK: proves non-negative — consistent with returning 0 always
 post=lambda x, result: result >= 0
 
 # STRONG: proves result equals x or -x — rules out result=0 when x=5
 post=lambda x, result: (result >= 0) & ((result == x) | (result == -x))
 ```
 
-The stronger form is the complete specification of absolute value. If Z3 can close it,
-use it.
+The stronger form is the complete specification of absolute value. If Z3 can close it, use it.
 
 ## Contract limitations
 
-- Contracts are lambdas — single expressions only. Use `&` to combine conditions.
+- Contracts are single-expression lambdas. Use `&` to combine conditions.
 - Contracts cannot contain assignments or `yield`.
 - The translator supports the same arithmetic / comparison / boolean subset as the function
   body. See [Supported Python](../guides/supported-python.md).

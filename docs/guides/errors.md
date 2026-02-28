@@ -2,7 +2,7 @@
 
 ## Reading counterexamples
 
-When `cert.status == Status.COUNTEREXAMPLE`, Z3 found a counterexample.
+When `cert.status == Status.COUNTEREXAMPLE`, Z3 found an input that violates the contract.
 It is available as a `dict` on `cert.counterexample`:
 
 ```python
@@ -11,7 +11,7 @@ from provably.engine import Status
 
 @verified(
     pre=lambda n: n >= 0,
-    post=lambda n, result: result * result == n,   # wrong: isqrt doesn't always square back
+    post=lambda n, result: result * result == n,   # wrong: isqrt doesn't square back
 )
 def isqrt(n: int) -> int:
     r = 0
@@ -23,16 +23,14 @@ cert = isqrt.__proof__
 print(cert.verified)        # False
 print(cert.status)          # Status.COUNTEREXAMPLE
 print(cert.counterexample)  # {'n': 2, '__return__': 1}
-# Explanation: isqrt(2) = 1, but 1 * 1 = 1 != 2
+# Explanation: isqrt(2) = 1, but 1 * 1 = 1 ≠ 2
 ```
 
 The counterexample shows the exact input values (`n=2`) and the return value (`__return__=1`)
-that together violate the postcondition. This is a **concrete witness** — you can run
-`isqrt(2)` yourself and observe the behavior.
+that together violate the postcondition. This is a **concrete witness** — run `isqrt(2)`
+yourself and observe the behavior.
 
-### Counterexample fields
-
-The keys in `counterexample` are:
+**Counterexample fields:**
 
 - One entry per function parameter (using the original parameter names).
 - One entry named `__return__` for the return value.
@@ -51,7 +49,9 @@ line number.
 
 ### Common messages
 
-**"Unsupported node type: `While`"**
+---
+
+**`Unsupported node type: While`**
 
 ```
 provably.engine.TranslationError: Unsupported node type: While at line 4.
@@ -61,12 +61,11 @@ provably.engine.TranslationError: Unsupported node type: While at line 4.
 ```
 
 Fix: Remove the `while` loop from the verified function's body. Either replace it with a
-closed-form expression, or — if the loop is inherently part of the algorithm — verify a
-weaker property that doesn't require inlining the loop.
+closed-form expression, or verify a weaker property that doesn't require inlining the loop.
 
 ---
 
-**"Call to 'f' is not in contracts= and is not a supported builtin"**
+**`Call to 'f' is not in contracts= and is not a supported builtin`**
 
 ```
 provably.engine.TranslationError: Call to 'helper' at line 7 is not a supported builtin
@@ -77,19 +76,18 @@ Fix: Add the callee to `contracts=` with its own `@verified` decorator, or inlin
 
 ---
 
-**"Module constant 'X' has type <class 'str'>, expected int or float"**
+**`Module constant 'X' has type <class 'str'>, expected int or float`**
 
 ```
 provably.engine.TranslationError: Module constant 'LABEL' has type <class 'str'>,
 expected int or float. Only numeric constants can be injected into Z3 expressions.
 ```
 
-Fix: Do not reference string constants from contracts or the function body being translated.
-Pass them as parameters or guard the reference outside the translated path.
+Fix: Do not reference string constants from contracts or the verified function body.
 
 ---
 
-**"Exponent must be a concrete integer literal, got Name('n')"**
+**`Exponent must be a concrete integer literal, got Name('n')`**
 
 ```
 provably.engine.TranslationError: Exponent in x**n must be a concrete integer literal.
@@ -100,7 +98,7 @@ Fix: Replace `x ** n` with a concrete power (`x ** 2`, `x ** 3`) or use repeated
 
 ---
 
-**"No Z3 sort for Python type: list"**
+**`No Z3 sort for Python type: list`**
 
 ```
 provably.engine.TranslationError: No Z3 sort for Python type: list[int].
@@ -119,13 +117,13 @@ When `cert.status == Status.UNKNOWN`:
 from provably.engine import Status
 
 cert = f.__proof__
-print(cert.verified)                        # False
-print(cert.status == Status.UNKNOWN)        # True
-print(cert.message)                         # "Z3 returned unknown (timeout 5000ms?)"
+print(cert.verified)                  # False
+print(cert.status == Status.UNKNOWN)  # True
+print(cert.message)                   # "Z3 returned unknown (timeout 5000ms?)"
 ```
 
-This means Z3 exhausted its timeout budget without determining satisfiability. It is **not**
-a proof failure — the property may still hold. Strategies:
+Z3 exhausted its timeout budget without determining satisfiability. This is **not** a proof
+failure — the property may still hold.
 
 ### 1. Increase the timeout
 
@@ -134,8 +132,14 @@ from provably import configure
 configure(timeout_ms=30_000)   # 30 seconds (default: 5000)
 ```
 
-Re-run the proof by calling `clear_cache()` and re-importing the module (or restarting the
-process).
+Then `clear_cache()` and re-import (or restart the process):
+
+```python
+from provably.engine import clear_cache
+clear_cache()
+import importlib, mypackage.math
+importlib.reload(mypackage.math)
+```
 
 ### 2. Identify nonlinear arithmetic
 
@@ -143,11 +147,11 @@ Timeout is most common when the function or contracts contain products of two sy
 variables:
 
 ```python
-post=lambda a, b, result: result == a * b   # a * b is nonlinear if both are symbolic
+post=lambda a, b, result: result == a * b   # nonlinear if both a and b are symbolic
 ```
 
 Nonlinear integer arithmetic is undecidable in general; Z3 uses incomplete heuristics.
-Try to reformulate: can you express the property in terms of `a` and `b` separately?
+Reformulate if possible — can you express the property in terms of `a` and `b` separately?
 
 ### 3. Simplify the function
 
@@ -155,9 +159,6 @@ Break the function into smaller `@verified` helpers and compose with `contracts=
 Each sub-proof is easier for Z3 to close.
 
 ### 4. Use `@runtime_checked` as a fallback
-
-If the property cannot be proven statically, use `@runtime_checked` to assert it at
-every call:
 
 ```python
 from provably import runtime_checked
@@ -175,8 +176,6 @@ This does not produce a proof certificate but adds safety at call time.
 ---
 
 ## `inspect.getsource` failures
-
-If provably raises:
 
 ```
 OSError: could not get source code
@@ -202,6 +201,7 @@ configure(raise_on_failure=False)
 # Now import and inspect:
 import mypackage.math
 cert = mypackage.math.my_function.__proof__
+print(cert.status)
 print(cert.counterexample)
 print(cert.message)
 ```

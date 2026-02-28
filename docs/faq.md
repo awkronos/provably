@@ -13,19 +13,19 @@ This happens before Z3 ever sees the expression.
 
 Z3 uses operator overloading to build symbolic expression trees. When you
 write `a & b` on two `z3.BoolRef` objects, Z3's `__and__` method runs and
-returns a new `z3.BoolRef` representing the conjunction. The & operator *can*
-be overloaded; `and` cannot.
+returns a new `z3.BoolRef` representing the conjunction. The `&` operator
+*can* be overloaded; `and` cannot.
 
 **Use `&` for AND, `|` for OR, `~` for NOT** in all pre/post lambdas:
 
 ```python
-# Wrong — Python evaluates this eagerly, returns a Python bool
+# Wrong — Python short-circuits, returns the second operand as a Python value
 @verified(post=lambda x, result: result >= 0 and result <= 100)
-def f(x): ...
+def f(x: int) -> int: ...
 
 # Correct — Z3 builds a symbolic conjunction
 @verified(post=lambda x, result: (result >= 0) & (result <= 100))
-def f(x): ...
+def f(x: int) -> int: ...
 ```
 
 The parentheses around each comparison are required because `&` has lower
@@ -42,15 +42,13 @@ general: you would need to find a *loop invariant* that holds before every
 iteration and implies the postcondition after the loop terminates.
 
 Loop invariant synthesis is an active research area. Some tools (Dafny,
-Frama-C, VeriFast) require the programmer to supply invariants as
-annotations. provably's design goal is zero annotation overhead — contracts
-only, no invariants — so while loops are currently unsupported and receive
-`TranslationError`.
+Frama-C, VeriFast) require the programmer to supply invariants as annotations.
+provably's design goal is zero annotation overhead — contracts only, no
+invariants — so while loops are currently unsupported and receive `TranslationError`.
 
-`for` loops over small known ranges are planned. Recursive functions with
-bounded depth are partially supported via unrolling. If your use case
-requires while loops, see [Supported Python](guides/supported-python.md)
-for alternatives, or open an issue describing your contract.
+`for` loops over small known ranges are planned. If your use case requires while
+loops, see [Supported Python](guides/supported-python.md) for alternatives, or
+open an issue describing your contract.
 
 ---
 
@@ -60,7 +58,7 @@ Trusted Computing Base. In formal verification, the TCB is the set of
 components whose correctness must be *assumed* rather than proved. A smaller
 TCB means fewer things can go wrong silently.
 
-provably's TCB includes:
+provably's TCB:
 
 - **Python's AST parser** — the source text must accurately reflect what CPython executes.
 - **provably's translator** (`translator.py`) — it must map Python semantics to Z3 semantics faithfully. A translation bug produces a proof of the wrong formula, which is the primary failure mode.
@@ -106,10 +104,13 @@ More complex contracts with many variables or nonlinear arithmetic may take
 100ms–5s.
 
 The default timeout is **5000ms** (5 seconds). Functions that exceed it receive
-status `UNKNOWN`. You can adjust per-decorator:
+status `UNKNOWN`. Adjust per-decorator:
 
 ```python
-@verified(post=lambda x, result: result >= 0, timeout_ms=10_000)
+@verified(
+    post=lambda x, result: result >= 0,
+    timeout_ms=10_000,
+)
 def complex_function(x: float) -> float: ...
 ```
 
@@ -132,8 +133,7 @@ The proof attempt returns `Status.UNKNOWN`. The `ProofCertificate` carries
 `verified=False` and `status=Status.UNKNOWN`.
 
 If `raise_on_failure=True`, a timeout raises `VerificationError`. Otherwise,
-the function is silently wrapped with no static guarantee — only its runtime
-behavior is unchanged.
+the function is silently wrapped with no static guarantee.
 
 Timeouts are not treated as proof failures (unlike `COUNTEREXAMPLE`), because
 a timeout only says "we didn't finish" — it does not mean the contract is
@@ -164,13 +164,14 @@ def my_abs(x: float) -> float:
     contracts={"my_abs": my_abs.__contract__},
 )
 def double_abs(x: float) -> float:
-    return my_abs(x) * 2  # provably knows my_abs returns >= 0
+    return my_abs(x) * 2   # provably knows my_abs returns >= 0
+# double_abs.__proof__.verified → True
 ```
 
 For external functions, the options are:
 
 - Wrap the external call in a `@verified` stub with a manually stated contract
-  and `SKIPPED` status, and trust the contract as an axiom.
+  and `SKIPPED` status, treating the contract as an axiom.
 - Use `@runtime_checked` to guard the call at runtime.
 - Restrict the function body to constructs the translator supports.
 
@@ -206,7 +207,7 @@ A `Protocol` for verified functions is on the roadmap for a future release.
 |---|---|---|
 | **When** | At decoration time (import) | At every call |
 | **Requires Z3** | Yes | No |
-| **Coverage** | All inputs (proof) | Only inputs actually passed |
+| **Coverage** | All inputs (mathematical proof) | Only inputs actually passed |
 | **Overhead at call site** | Zero | One lambda evaluation per call |
 | **Counterexamples** | Concrete, automatic | N/A — violation is the counterexample |
 | **Unsupported constructs** | `TranslationError` → `SKIPPED` | Always works |
@@ -218,7 +219,7 @@ an assertion. Combine them with `check_contracts=True`:
 @verified(
     pre=lambda x: x >= 0,
     post=lambda x, result: result >= 0,
-    check_contracts=True,  # also enforces at runtime
+    check_contracts=True,   # also enforces at runtime
 )
 def sqrt_approx(x: float) -> float:
     return x ** 0.5
@@ -238,9 +239,7 @@ The short version: `src/provably/_self_proof.py` contains ten pure functions
 decorated with `@verified`. They are provably's own reference implementations
 of `min`, `max`, `abs`, `clamp`, `relu`, division, and identity. All ten proofs
 hold at `Status.VERIFIED`, and the CI job `self-proof` asserts this on every
-commit. If a translator regression breaks any self-proof, the job fails before
-merge.
+commit. If a translator regression breaks any self-proof, the job fails before merge.
 
 This is not a proof of provably's completeness. It is a meaningful invariant:
-the translator can correctly handle the constructs it uses in its own core
-abstractions.
+the translator can correctly handle the constructs it uses in its own core abstractions.

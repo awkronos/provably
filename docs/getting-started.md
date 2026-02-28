@@ -64,6 +64,9 @@ print(proof)                 # [Q.E.D.] add
 
 ## A stronger example: floor-division bounds
 
+The real value of provably is capturing the **complete mathematical specification** —
+not just "result is non-negative" but "result is exactly the floor-division quotient":
+
 ```python
 from provably import verified
 
@@ -77,15 +80,19 @@ def floor_div(a: int, b: int) -> int:
 cert = floor_div.__proof__
 print(cert.verified)        # True
 print(cert.solver_time_ms)  # ~2ms
+print(cert)                 # [Q.E.D.] floor_div
 ```
 
 The postcondition `result * b <= a < result * b + b` is the complete mathematical
-characterisation of floor division when `b > 0`. Z3 proves it holds for all integers `a`
-and all positive `b` — not just the cases you thought to test.
+characterisation of floor division when `b > 0`. Z3 proves it holds for **all** integers
+`a` and all positive `b` — not just the cases you thought to test.
 
 ---
 
 ## When proof fails: counterexamples
+
+When a contract is wrong, Z3 doesn't just say "failed" — it gives you the exact input
+that exposes the gap:
 
 ```python
 from provably import verified
@@ -107,8 +114,8 @@ print(cert.counterexample)  # {'n': 2, '__return__': 1}
 # isqrt(2) = 1, but 1 * 1 = 1 ≠ 2. The contract is wrong, not the function.
 ```
 
-Z3 doesn't just tell you the proof failed — it gives you the exact input that breaks the
-contract. Run `bad_isqrt(2)` yourself and you'll see the discrepancy. Fix the postcondition:
+The counterexample is a **concrete witness** — run `bad_isqrt(2)` yourself and confirm.
+Fix the postcondition to match what the function actually guarantees:
 
 ```python
 @verified(
@@ -122,6 +129,7 @@ def isqrt(n: int) -> int:
     return r
 
 print(isqrt.__proof__.verified)  # True  [Q.E.D.]
+print(isqrt.__proof__)           # [Q.E.D.] isqrt
 ```
 
 ---
@@ -135,7 +143,7 @@ has determined that the verification condition (VC) is **unsatisfiable** — the
 assignment of values to the input variables that satisfies the precondition and violates the
 postcondition simultaneously. This is a mathematical proof, not a probabilistic assertion.
 
-Concretely, for a function $f$ with precondition $P$ and postcondition $Q$:
+For a function $f$ with precondition $P$ and postcondition $Q$:
 
 $$\text{VC} \;=\; P(\bar{x}) \;\Rightarrow\; Q(\bar{x},\, f(\bar{x}))$$
 
@@ -143,8 +151,7 @@ provably checks that $\neg\,\text{VC}$ is unsatisfiable. The SMT query is:
 
 $$\text{check}\bigl(P(\bar{x}) \;\land\; \neg\, Q(\bar{x}, \mathit{ret})\bigr)$$
 
-If `unsat`: the implication holds universally. If `sat`: Z3 returns a model — a concrete
-counterexample.
+If `unsat`: the implication holds universally. If `sat`: Z3 returns a model — a concrete counterexample.
 
 !!! theorem "What the proof covers"
     A `VERIFIED` proof covers **all possible inputs** satisfying the precondition — not

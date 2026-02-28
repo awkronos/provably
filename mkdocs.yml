@@ -37,20 +37,25 @@ theme:
     - navigation.indexes
     - navigation.instant
     - navigation.instant.progress
+    - navigation.tracking
     - search.highlight
     - search.share
     - search.suggest
     - content.code.copy
     - content.code.annotate
     - content.tabs.link
+    - content.tooltips
     - toc.follow
     - announce.dismiss
   icon:
     repo: fontawesome/brands/github
     admonition:
       example: fontawesome/solid/flask-vial
-      proof: fontawesome/solid/check
+      proof: fontawesome/solid/check-double
       theorem: fontawesome/solid/circle-play
+      note: fontawesome/solid/circle-info
+      warning: fontawesome/solid/triangle-exclamation
+      tip: fontawesome/solid/lightbulb
 
 extra_css:
   - stylesheets/custom.css
@@ -95,6 +100,8 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
   - attr_list
   - md_in_html
   - tables
@@ -102,6 +109,7 @@ markdown_extensions:
   - toc:
       permalink: true
       title: On this page
+  - def_list
 
 extra_javascript:
   - https://polyfill.io/v3/polyfill.min.js?features=es6
@@ -112,7 +120,22 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/awkronos/provably
       name: provably on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/provably/
+      name: provably on PyPI
   generator: false
+  analytics:
+    feedback:
+      title: Was this page helpful?
+      ratings:
+        - icon: material/thumb-up-outline
+          name: This page was helpful
+          data: 1
+          note: Thanks for the feedback!
+        - icon: material/thumb-down-outline
+          name: This page could be improved
+          data: 0
+          note: Thanks for the feedback!
 
 nav:
   - Home: index.md

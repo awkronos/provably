@@ -32,12 +32,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, get_type_hints
 
-from .translator import HAS_Z3, TranslationError, Translator
+import z3
+
+from .translator import TranslationError, Translator
 from .types import extract_refinements, make_z3_var
-
-if HAS_Z3:
-    import z3
-
 
 # ---------------------------------------------------------------------------
 # Global configuration
@@ -323,16 +321,6 @@ def verify_function(
         timeout_ms = int(_config["timeout_ms"])
 
     fname = getattr(func, "__name__", str(func))
-
-    if not HAS_Z3:
-        return ProofCertificate(
-            function_name=fname,
-            source_hash="",
-            status=Status.SKIPPED,
-            preconditions=(),
-            postconditions=(),
-            message=("z3-solver not installed. Run: pip install 'provably[z3]'"),
-        )
 
     # Get source
     try:

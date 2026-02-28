@@ -25,13 +25,11 @@ The loop is genuine: **the tool that verifies code is verified by the tool.**
 ## What is self-verified
 
 Every function in `src/provably/_self_proof.py` is decorated with `@verified`
-and collects a `ProofCertificate` at import time. The table below shows the
-current self-verified functions and their contracts.
+and collects a `ProofCertificate` at import time.
 
 !!! note "Postcondition strength"
     Each postcondition is the **strongest** property Z3 can close for the
-    given fragment. The proofs were deliberately strengthened beyond mere
-    bounds — selectivity (result equals one of the inputs), passthrough
+    given fragment. Selectivity (result equals one of the inputs), passthrough
     (identity when in range), and exactness (result == x + 1) are all proved
     where possible.
 
@@ -48,9 +46,8 @@ current self-verified functions and their contracts.
 | `negate_negate(x)` | — | `result == x` |
 | `max_of_abs(a, b)` | — | `result >= 0` and `result` is one of `a`, `-a`, `b`, `-b` |
 
-All ten proofs carry status <span class="proof-qed proof-qed--glow">Q.E.D.</span>. If any proof ever degrades to
-`COUNTEREXAMPLE` or `UNKNOWN`, CI fails immediately — `pytest tests/test_self_proof.py`
-is a required job in every CI run.
+All ten proofs carry status <span class="proof-qed proof-qed--glow">Q.E.D.</span>.
+If any proof ever degrades to `COUNTEREXAMPLE` or `UNKNOWN`, CI fails immediately.
 
 ---
 
@@ -71,6 +68,9 @@ def _z3_min(a: float, b: float) -> float:
         return a
     else:
         return b
+
+_z3_min.__proof__.verified   # True
+str(_z3_min.__proof__)       # "[Q.E.D.] _z3_min"
 ```
 
 !!! proof "Why selectivity matters"
@@ -83,7 +83,7 @@ At import time, the `@verified` decorator:
 
 1. Parses the function body into an AST.
 2. Translates each Python construct into a Z3 expression (assignments become
-   `z3.substitute`, branches become `z3.If`, the contract lambda becomes a
+   substitutions, branches become `z3.If`, the contract lambda becomes a
    `z3.BoolRef` assertion).
 3. Asks Z3 to find any input violating `¬postcondition`. If Z3 returns `unsat`,
    the proof is closed — no such input exists.
@@ -105,11 +105,11 @@ print(cert.verified)       # True
 print(cert.solver_time_ms) # e.g. 3.4
 print(cert.z3_version)     # e.g. "4.13.0"
 print(cert.postconditions) # ('And(val < lo, Or(val > hi, result == val), ...)',)
-print(cert)
-# [Q.E.D.] clamp
+print(cert)                # [Q.E.D.] clamp
 ```
 
-A `VERIFIED` status means Z3 proved the formula `∀ inputs : pre(inputs) ⟹ post(inputs, f(inputs))`
+A `VERIFIED` status means Z3 proved the formula
+$\forall \text{inputs} : \text{pre}(\text{inputs}) \Rightarrow \text{post}(\text{inputs}, f(\text{inputs}))$
 is unsatisfiable when negated. This is not sampling. It is not fuzzing. It is a
 mathematical proof over all possible real-number inputs in Z3's model.
 
@@ -143,8 +143,7 @@ Unknown constructs that trigger `TranslationError` are `SKIPPED`, not proved.
 
 ## CI integration
 
-The self-proof job is a required status check, running on every push and pull
-request:
+The self-proof job is a required status check on every push and pull request:
 
 ```yaml title=".github/workflows/ci.yml"
 self-proof:
@@ -168,8 +167,7 @@ The test suite in `tests/test_self_proof.py` asserts:
 
 If a translator regression breaks the proof of `clamp`, CI catches it before
 merge. If Z3 times out on any self-proof, the status becomes `UNKNOWN` and
-CI fails. There is no grace period: the tool must always be able to prove
-these ten functions.
+CI fails. There is no grace period.
 
 ---
 

@@ -1,8 +1,10 @@
 # How It Works
 
-provably's core pipeline is: **Python source → AST → Z3 constraints → SMT query → proof or counterexample**.
+provably's core pipeline: **Python source → AST → Z3 constraints → SMT query → proof or counterexample**.
 
 ## Architecture
+
+<div class="pipeline-diagram">
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -16,6 +18,8 @@ provably's core pipeline is: **Python source → AST → Z3 constraints → SMT 
 │  6. attach __proof__        ─→  ProofCertificate             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+</div>
 
 ## Step 1: Source retrieval
 
@@ -35,7 +39,7 @@ are also not retrievable; use named functions.
 
 The `Translator` class walks the AST and emits Z3 expressions. This is the **Trusted
 Computing Base (TCB)**: if there is a bug in the translator, a proof could be unsound.
-The TCB is deliberately small and tested extensively.
+The TCB is deliberately small (~500 LOC) and tested extensively.
 
 Each parameter is introduced as a Z3 symbolic variable:
 
@@ -110,11 +114,11 @@ solver.add(z3.Not(post_constraint))
 result = solver.check()  # unsat | sat | unknown
 ```
 
-| Result | Meaning | Certificate |
+| Result | Meaning | Certificate status |
 |---|---|---|
-| `unsat` | No counterexample exists. The contract holds universally. | `status = VERIFIED` |
-| `sat` | Z3 found a counterexample. `cert.counterexample` contains the witness. | `status = COUNTEREXAMPLE` |
-| `unknown` | Solver timed out or gave up. The property may still hold. | `status = UNKNOWN` |
+| `unsat` | No counterexample exists. Contract holds universally. | `VERIFIED` |
+| `sat` | Z3 found a counterexample. `cert.counterexample` contains the witness. | `COUNTEREXAMPLE` |
+| `unknown` | Solver timed out or gave up. Property may still hold. | `UNKNOWN` |
 
 ## Step 5: Proof certificates
 
@@ -138,7 +142,7 @@ class ProofCertificate:
 ```
 
 Proof certificates are **cached** by content hash (source + contract bytecode).
-Calling `clear_cache()` invalidates the cache.
+Calling `clear_cache()` invalidates the cache and forces re-verification on the next import.
 
 ## The Trusted Computing Base
 

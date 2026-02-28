@@ -1,9 +1,9 @@
 # Pytest Integration
 
-Proofs are computed at decoration time (when the module is imported). In pytest, this means
-you can assert `__proof__.verified` directly in test functions — no special runner needed.
+Proofs are computed at decoration time (when the module is imported). In pytest, you assert
+`__proof__.verified` directly in test functions — no special runner, no plugin, no configuration.
 
-## Basic assertion
+## Basic assertions
 
 ```python
 # tests/test_proofs.py
@@ -16,45 +16,20 @@ def test_safe_divide_proven():
     assert safe_divide.__proof__.verified
 
 def test_integer_sqrt_proven():
-    assert integer_sqrt.__proof__.verified
-```
-
-If a proof fails, the assertion error message tells you which function failed. Add a
-custom message to expose the counterexample:
-
-```python
-def test_integer_sqrt_proven():
     cert = integer_sqrt.__proof__
-    assert cert.verified, (
-        f"integer_sqrt proof failed: {cert}"
-    )
+    assert cert.verified, f"integer_sqrt proof failed:\n{cert}"
 ```
 
-## `raise_on_failure=True`
+When a proof fails, the assertion error message includes the full `ProofCertificate` —
+status, counterexample, and Z3 timing.
 
-Pass `raise_on_failure=True` to `@verified` to raise `VerificationError` immediately at
-decoration time when a proof fails, rather than storing the failure in `__proof__`:
+---
 
-```python
-from provably import verified
+## `verify_module()` — one test for the whole package
 
-@verified(
-    pre=lambda x: x >= 0,
-    post=lambda x, result: result >= 0,
-    raise_on_failure=True,
-)
-def safe_sqrt(x: float) -> float:
-    return x ** 0.5
-```
-
-This is useful for development: the import itself fails loudly rather than silently storing
-a failed proof. For CI, prefer explicit assertions so all proof failures are reported in a
-single test run.
-
-## `verify_module()`
-
-`verify_module()` collects every `@verified` function in a module and returns a
-dict mapping function name to `ProofCertificate`:
+`verify_module()` collects every `@verified` function in a module and returns a dict
+mapping function name to `ProofCertificate`. Use it for a single test that covers your
+entire proof surface:
 
 ```python
 # tests/test_all_proofs.py
@@ -76,17 +51,37 @@ def test_all_proofs():
     )
 ```
 
-This gives you a single test that catches any proof regression across the entire module.
-Add it to your CI test suite and it runs automatically on every push.
+Add this to CI and every proof regression is caught on every push.
 
-## Skipping Z3 when not installed
+---
 
-Use the `requires_z3` fixture from provably's `conftest.py` to skip proof tests when
-`z3-solver` is not installed:
+## `raise_on_failure=True`
+
+Pass `raise_on_failure=True` to raise `VerificationError` immediately at decoration time
+when a proof fails. Useful during development — the import itself fails loudly:
 
 ```python
-# conftest.py (already in provably's test suite — copy for your project)
+from provably import verified
+
+@verified(
+    pre=lambda x: x >= 0,
+    post=lambda x, result: result >= 0,
+    raise_on_failure=True,
+)
+def safe_sqrt(x: float) -> float:
+    return x ** 0.5
+```
+
+For CI, prefer explicit assertions so all proof failures are reported in a single run.
+
+---
+
+## Skipping when Z3 is not installed
+
+```python
+# conftest.py
 import pytest
+
 try:
     import z3
     HAS_Z3 = True
@@ -106,10 +101,12 @@ def test_clamp_proven():
     assert clamp.__proof__.verified
 ```
 
+---
+
 ## Clearing the proof cache
 
-provably caches proof results by function identity. Between tests that mutate module state,
-call `clear_cache()` to force re-verification:
+provably caches proof results by function identity. If you mutate module state between
+tests, call `clear_cache()` to force re-verification:
 
 ```python
 from provably.engine import clear_cache
@@ -118,19 +115,34 @@ def setup_function():
     clear_cache()
 ```
 
-The `conftest.py` in provably's own test suite does this automatically via an `autouse`
-fixture.
+provably's own test suite does this via an `autouse` fixture:
 
-## Example CI configuration
+```python
+# conftest.py
+import pytest
+from provably.engine import clear_cache
+
+@pytest.fixture(autouse=True)
+def fresh_cache():
+    clear_cache()
+    yield
+    clear_cache()
+```
+
+---
+
+## CI configuration
 
 ```yaml
 # .github/workflows/ci.yml  (excerpt)
-- name: Run tests
-  run: uv run pytest tests/ -v --cov=src/provably
+- name: Run proof tests
+  run: uv run pytest tests/ -v -m proof --cov=src/provably
 ```
 
-Proof assertions run as normal pytest tests. If any proof fails (counterexample found,
-translation error, or timeout), the test fails and CI blocks.
+Proof assertions run as normal pytest tests. If any proof fails — counterexample found,
+translation error, or timeout — the test fails and CI blocks.
+
+---
 
 ## Recommended test structure
 
@@ -142,10 +154,11 @@ tests/
 └── test_integration.py  # verify_module() over entire packages
 ```
 
-Keep proof tests in a separate file from behavioral tests. Proof tests are deterministic
-and fast (milliseconds per proof). Mark them `@pytest.mark.proof` for selective execution:
+Keep proof tests separate from behavioral tests. Proof tests are deterministic and fast
+(milliseconds per proof). Mark them `@pytest.mark.proof` for selective execution:
 
 ```bash
-pytest -m proof          # proofs only
-pytest -m "not proof"    # behavioral tests only
+pytest -m proof           # proofs only
+pytest -m "not proof"     # behavioral tests only
+pytest tests/test_proofs.py -v  # verbose proof output with timing
 ```
