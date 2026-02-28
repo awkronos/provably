@@ -119,6 +119,5 @@ branch = true
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
-    "if HAS_Z3:",
     "raise NotImplementedError",
 ]

@@ -116,8 +116,7 @@ Convert `Annotated` type markers into Z3 `BoolRef` constraints for a given symbo
 
 ### Returns
 
-`list[z3.BoolRef]` — one constraint per marker. Empty if `z3-solver` is not installed
-or if `typ` is not `Annotated`.
+`list[z3.BoolRef]` — one constraint per marker. Empty if `typ` is not `Annotated`.
 
 ### Example
 
@@ -161,7 +160,7 @@ Strips `Annotated` wrappers before mapping.
 | `float` | `z3.RealSort()` |
 | `bool` | `z3.BoolSort()` |
 
-Raises `TypeError` for unsupported types. Raises `RuntimeError` if `z3-solver` is not installed.
+Raises `TypeError` for unsupported types.
 
 ---
 

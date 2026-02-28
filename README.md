@@ -6,6 +6,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/provably?labelColor=0a0a0f)](https://pypi.org/project/provably/)
 [![License](https://img.shields.io/badge/license-MIT-green?labelColor=0a0a0f)](LICENSE)
 [![CI](https://github.com/awkronos/provably/actions/workflows/ci.yml/badge.svg)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen?labelColor=0a0a0f)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
 [![Typed](https://img.shields.io/badge/types-mypy%20strict-blue?labelColor=0a0a0f)](https://mypy.readthedocs.io/)
 [![Docs](https://img.shields.io/badge/docs-awkronos.github.io-blue?labelColor=0a0a0f)](https://awkronos.github.io/provably/)
 
@@ -34,12 +35,9 @@ Z3 determined that **no input** satisfying the precondition can violate the post
 ## Install
 
 ```bash
-pip install provably[z3]
-# or: uv add "provably[z3]"
+pip install provably
+# or: uv add provably
 ```
-
-The `[z3]` extra pulls in `z3-solver`. The base package has zero dependencies —
-`@runtime_checked` works without Z3.
 
 ## Examples
 

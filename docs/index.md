@@ -55,17 +55,16 @@ and unconditionally.
 === "pip"
 
     ```bash
-    pip install provably[z3]
+    pip install provably
     ```
 
 === "uv"
 
     ```bash
-    uv add "provably[z3]"
+    uv add provably
     ```
 
-The `[z3]` extra installs `z3-solver`. The base package has zero dependencies —
-`@runtime_checked` works without Z3.
+Z3-solver is included as a dependency.
 
 ## What makes provably different
 
@@ -151,9 +150,9 @@ def manhattan(x: float, y: float) -> float:
 
 ### `@runtime_checked`
 
-Assert contracts at every call without Z3. Ideal for production guards, unsupported
-constructs, or environments without `z3-solver` installed. Raises `ContractViolationError`
-on any violation.
+Assert contracts at every call without invoking the solver. Ideal for production guards,
+unsupported constructs, or when you want zero solver overhead at runtime. Raises
+`ContractViolationError` on any violation.
 
 ```python
 @runtime_checked(

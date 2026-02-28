@@ -23,7 +23,7 @@ provably uses [Semantic Versioning](https://semver.org/).
 - `extract_refinements()`, `python_type_to_z3_sort()`, `make_z3_var()` utilities.
 - AST translator (`Translator`) covering: arithmetic, comparisons, boolean logic, `if/elif/else`, early returns, `min`, `max`, `abs`, module-level constants, compositionality via `contracts=`.
 - Proof caching by function identity, invalidated via `clear_cache()`.
-- Zero mandatory runtime dependencies. `z3-solver` is optional (`pip install provably[z3]`).
+- `z3-solver` is a required dependency, installed automatically.
 - Full type annotations (`py.typed` marker). Passes mypy strict.
 - Python 3.11 / 3.12 / 3.13 support.
 

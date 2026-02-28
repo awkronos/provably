@@ -20,4 +20,4 @@ Initial release.
 - Graceful handling of async functions (attach SKIPPED cert, no crash)
 - Contract arity validation with actionable error messages
 - Line number information in `TranslationError` messages
-- Zero runtime dependencies (`pip install provably` for types + runtime checks, `pip install provably[z3]` for formal verification)
+- `z3-solver` is a required dependency, installed automatically with `pip install provably`

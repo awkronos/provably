@@ -42,7 +42,6 @@ def python_type_to_z3_sort(typ: type) -> Any:
         The corresponding Z3 sort.
 
     Raises:
-        RuntimeError: If z3-solver is not installed.
         TypeError: If no Z3 sort exists for the given type.
     """
     origin = get_origin(typ)
@@ -72,7 +71,6 @@ def make_z3_var(name: str, typ: type) -> Any:
         A Z3 ``Int``, ``Real``, or ``Bool`` variable.
 
     Raises:
-        RuntimeError: If z3-solver is not installed.
         TypeError: If the type cannot be mapped to a Z3 sort.
     """
     sort = python_type_to_z3_sort(typ)
@@ -212,8 +210,7 @@ def extract_refinements(typ: type, var: Any) -> list[Any]:
         var: The Z3 variable to constrain.
 
     Returns:
-        A list of ``z3.BoolRef`` constraints. Empty if z3 is not
-        installed or if *typ* is not ``Annotated``.
+        A list of ``z3.BoolRef`` constraints. Empty if *typ* is not ``Annotated``.
     """
     origin = get_origin(typ)
     if origin is not Annotated:

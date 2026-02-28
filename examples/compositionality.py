@@ -15,15 +15,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import z3
+
 from provably import verified
 from provably.engine import verify_function
-from provably.types import Ge, Le, Between
-
-try:
-    import z3
-    HAS_Z3 = True
-except ImportError:
-    HAS_Z3 = False
+from provably.types import Between, Ge, Le
 
 
 # ---------------------------------------------------------------------------
@@ -92,31 +88,28 @@ print()
 
 print("=== 3. Modular verification with contracts= ===")
 
-if HAS_Z3:
-    # Build the contract dict that the engine expects
-    safe_half_contract = {
-        "pre": safe_half.__contract__["pre"],
-        "post": safe_half.__contract__["post"],
-        "return_sort": z3.RealSort(),
-    }
+safe_half_contract = {
+    "pre": safe_half.__contract__["pre"],
+    "post": safe_half.__contract__["post"],
+    "return_sort": z3.RealSort(),
+}
 
-    def quarter(x: float) -> float:
-        """Proven by composition: half(half(x)) when x >= 0."""
-        # In the symbolic proof, 'safe_half' is replaced by its contract
-        return safe_half(x) / 2
 
-    cert = verify_function(
-        quarter,
-        pre=lambda x: x >= 0,
-        post=lambda x, result: (result >= 0) & (result <= x),
-        verified_contracts={"safe_half": safe_half_contract},
-    )
-    print(f"quarter (via safe_half contract): {cert}")
-    print(f"  quarter(8.0) = {quarter(8.0)}")
-    print()
-else:
-    print("  (skipped — z3-solver not installed)")
-    print()
+def quarter(x: float) -> float:
+    """Proven by composition: half(half(x)) when x >= 0."""
+    # In the symbolic proof, 'safe_half' is replaced by its contract
+    return safe_half(x) / 2
+
+
+cert = verify_function(
+    quarter,
+    pre=lambda x: x >= 0,
+    post=lambda x, result: (result >= 0) & (result <= x),
+    verified_contracts={"safe_half": safe_half_contract},
+)
+print(f"quarter (via safe_half contract): {cert}")
+print(f"  quarter(8.0) = {quarter(8.0)}")
+print()
 
 
 # ---------------------------------------------------------------------------

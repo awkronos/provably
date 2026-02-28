@@ -76,33 +76,6 @@ For CI, prefer explicit assertions so all proof failures are reported in a singl
 
 ---
 
-## Skipping when Z3 is not installed
-
-```python
-# conftest.py
-import pytest
-
-try:
-    import z3
-    HAS_Z3 = True
-except ImportError:
-    HAS_Z3 = False
-
-requires_z3 = pytest.mark.skipif(not HAS_Z3, reason="z3-solver not installed")
-```
-
-```python
-# tests/test_proofs.py
-from conftest import requires_z3
-from mypackage.math import clamp
-
-@requires_z3
-def test_clamp_proven():
-    assert clamp.__proof__.verified
-```
-
----
-
 ## Clearing the proof cache
 
 provably caches proof results by function identity. If you mutate module state between

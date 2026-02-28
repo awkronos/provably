@@ -5,17 +5,16 @@
 === "pip"
 
     ```bash
-    pip install provably[z3]
+    pip install provably
     ```
 
 === "uv"
 
     ```bash
-    uv add "provably[z3]"
+    uv add provably
     ```
 
-The `[z3]` extra installs `z3-solver` (Microsoft's Z3 SMT solver Python bindings).
-Without it, `@verified` raises `RuntimeError` at decoration time, but `@runtime_checked` works normally.
+provably depends on `z3-solver` (Microsoft's Z3 SMT solver Python bindings), installed automatically.
 
 Verify the install:
 

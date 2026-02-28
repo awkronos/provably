@@ -371,7 +371,7 @@ def runtime_checked(
 
     This is useful when:
 
-    - Z3 is not installed (zero extra dependencies).
+    - You want zero solver overhead at runtime.
     - The function body uses constructs the translator does not support.
     - You want defence-in-depth in addition to a static proof.
 
