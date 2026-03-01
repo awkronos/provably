@@ -64,9 +64,9 @@ def clamped_abs(lo: float, hi: float, x: float) -> float:
 
 ## Unverified callees
 
-Calling a function not in `contracts=` and not a builtin (`min`, `max`, `abs`)
-raises `TranslationError`. This is intentional -- silently ignoring calls would
-produce unsound proofs.
+Calling a function not in `contracts=` and not a builtin (`min`, `max`, `abs`,
+`pow`, `bool`, `int`, `float`, `len`, `round`) raises `TranslationError`. This is
+intentional -- silently ignoring calls would produce unsound proofs.
 
 ## Re-verification
 

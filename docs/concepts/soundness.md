@@ -46,7 +46,8 @@ Everything outside the TCB -- decorator wrapper, `ProofCertificate`, caching,
 ## What provably does NOT guarantee
 
 **1. Termination.** Functions that never return satisfy any postcondition vacuously.
-provably rejects unbounded loops precisely for this reason.
+Bounded `while` and `for` loops are unrolled (max 256 iterations); unbounded loops
+are rejected with `TranslationError`. Recursion is not supported.
 
 **2. Unsupported constructs.** Calls to unverified helpers raise `TranslationError`.
 provably refuses to silently skip call sites.
@@ -63,13 +64,18 @@ the contract is wrong.
 
 ## Comparison to Coq and Lean
 
-| | provably | Coq / Lean |
-|---|---|---|
-| Approach | SMT (push-button) | Interactive theorem prover |
-| User effort | Decorator + contracts | Proof terms / tactics |
-| Kernel | Z3 (external) | Verified kernel (de Bruijn) |
-| Expressiveness | Arithmetic, restricted Python | All of dependent type theory |
-| Best for | Pre/post on numeric code | Deep correctness, recursion, data structures |
+| | provably (Z3) | provably (Lean4) | Coq / Lean (native) |
+|---|---|---|---|
+| Approach | SMT (push-button) | Auto-generated tactic proofs | Interactive theorem prover |
+| User effort | Decorator + contracts | Same — `verify_with_lean4()` | Proof terms / tactics |
+| Kernel | Z3 (external) | Lean4 type checker | Verified kernel (de Bruijn) |
+| Expressiveness | Arithmetic, restricted Python | Same subset (translated) | All of dependent type theory |
+| Best for | Pre/post on numeric code | Cross-checking Z3, exporting to Lean | Deep correctness, recursion, data structures |
+
+!!! note "Lean4 backend"
+    provably can generate Lean4 theorem files from `@verified` functions via `export_lean4()`,
+    or verify directly via `verify_with_lean4()`. This provides an independent proof oracle
+    cross-checking Z3 results. See [FAQ](../faq.md#can-provably-use-lean4-instead-of-z3).
 
 ## The core guarantee
 

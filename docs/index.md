@@ -1,6 +1,6 @@
 # provably
 
-**Z3-backed formal verification for Python — via decorators and refinement types**
+**Formal verification for Python — via decorators, refinement types, and Z3/Lean4 backends**
 
 <div class="hero-badges">
   <span class="hero-badge hero-badge--self-proving">&#10003; Self-proving</span>
@@ -156,11 +156,70 @@ def isqrt(x: int) -> int:
 
 ### Self-verifying
 
-provably proves its own `min`, `max`, `abs`,
-`clamp`, `relu` on every CI push. If it can't
-prove its own builtins, the build breaks.
+provably proves 16 of its own functions on
+every CI push — including while loops, walrus
+operators, and type casts. If it can't prove
+its own builtins, the build breaks.
 
 [Self-Proof &rarr;](self-proof.md)
+
+</div>
+
+<div class="feature-card" markdown>
+
+### While loops & match/case
+
+Bounded `while` loops (unrolled up to 256
+iterations), `match`/`case` statements, and
+walrus `:=` operator — all verified.
+
+```python
+@verified(
+    pre=lambda n: (n >= 0) & (n <= 10),
+    post=lambda n, result: result == 0,
+)
+def countdown(n: int) -> int:
+    while n > 0:
+        n = n - 1
+    return n
+```
+
+</div>
+
+<div class="feature-card" markdown>
+
+### Lean4 backend
+
+Cross-check Z3 proofs with Lean4's type
+checker, or export theorems to `.lean` files.
+
+```python
+from provably import verify_with_lean4
+
+cert = verify_with_lean4(
+    clamp, pre=..., post=...
+)
+cert.z3_version  # "lean4:v4.x.0"
+```
+
+</div>
+
+<div class="feature-card" markdown>
+
+### Tuple returns & new builtins
+
+Verify functions returning `(a, b, ...)` tuples.
+`pow`, `bool`, `int`, `float`, `len`, `round`
+all supported as builtins.
+
+```python
+@verified(
+    post=lambda x, result:
+        result >= 0,
+)
+def cast_nonneg(x: Annotated[int, Ge(0)]) -> float:
+    return float(x)
+```
 
 </div>
 
@@ -180,3 +239,4 @@ prove its own builtins, the build breaks.
 | [Pytest integration](guides/pytest.md) | CI assertions, `verify_module()` |
 | [Errors and debugging](guides/errors.md) | Counterexamples, `TranslationError` fixes |
 | [Self-proof](self-proof.md) | provably verifies its own functions |
+| [FAQ](faq.md) | Common questions, Lean4 backend, `@verified` vs `@runtime_checked` |

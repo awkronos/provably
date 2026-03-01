@@ -65,15 +65,25 @@ assumptions = [x >= 0.0, x <= 1.0]  # added to solver
 | `if/elif/else` | nested `z3.If` | Path encoding |
 | `a if c else b` | `z3.If(c, a, b)` | |
 | `and`/`or`/`not` (body) | `z3.And`/`z3.Or`/`z3.Not` | |
+| `while cond: ...` | bounded unrolling | Max 256 iterations; `TranslationError` if unbounded |
+| `match`/`case` | nested `z3.If` | Literal, singleton, wildcard patterns. Python 3.10+ |
+| `(x := expr)` | inline assignment | Walrus operator; binds in enclosing Z3 scope |
+| `return (a, b)` | Z3 datatype + accessors | Tuple returns with axiom-bound accessors |
 | `min(a, b)` | `z3.If(a <= b, a, b)` | |
 | `max(a, b)` | `z3.If(a >= b, a, b)` | |
 | `abs(x)` | `z3.If(x >= 0, x, -x)` | |
+| `pow(x, n)` | unrolled multiplication | Same as `**`; concrete `n` in 0--3 |
+| `bool(x)` | `z3.If(x != 0, 1, 0)` | Nonzero test |
+| `int(x)` | `z3.ToInt(x)` | Identity for int, `ToInt` for real |
+| `float(x)` | `z3.ToReal(x)` | Identity for real, `ToReal` for int |
+| `len(x)` | uninterpreted `>= 0` | Axiom: `len(x) >= 0` |
+| `round(x)` | `z3.ToInt(x)` | Identity for int |
 
 !!! note "FloorDiv"
     Z3's `/` on `IntSort` is floor division (truncating toward negative infinity for
     positive divisors), matching Python's `//`. This is not `z3.ToInt(real / real)`.
 
-Bounded `for i in range(N)` loops (literal `N`, max 256) are fully unrolled.
+Bounded `for i in range(N)` and `while` loops (max 256 iterations) are fully unrolled.
 
 ## Verification condition
 
@@ -135,6 +145,6 @@ Everything outside the TCB (decorator plumbing, caching, `verify_module`) cannot
 produce a spurious `verified=True`.
 
 !!! theorem "Self-verification"
-    The self-proof module runs the entire TCB on functions it will later verify.
-    If a translator regression breaks `_z3_min` or `clamp`, CI fails before merge.
-    See [Self-Proof](../self-proof.md).
+    The self-proof module runs the entire TCB on 16 functions — including while loops,
+    walrus operators, and type casts. If a translator regression breaks any of them,
+    CI fails before merge. See [Self-Proof](../self-proof.md).

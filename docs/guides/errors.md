@@ -23,8 +23,9 @@ cert.counterexample  # {'n': 3, '__return__': 1}
 
 Fields: one entry per parameter (original names) plus `__return__` for the return value.
 
-!!! note "While loops produce `TRANSLATION_ERROR`, not counterexamples"
-    If the function body uses a `while` loop, the translator rejects it
+!!! note "Unbounded while loops produce `TRANSLATION_ERROR`"
+    Bounded `while` loops (max 256 iterations) are unrolled and verified normally.
+    If the loop bound cannot be determined statically, the translator rejects it
     before Z3 runs. The status will be `TRANSLATION_ERROR`, not `COUNTEREXAMPLE`.
 
 ---
@@ -35,7 +36,8 @@ Raised at decoration time when the translator encounters an unsupported construc
 
 | Message | Fix |
 |---|---|
-| `Unsupported statement: While` | Remove the loop. Use closed-form or a `@verified` helper. |
+| `Unsupported statement: While (unbounded)` | Ensure the loop has a deterministic bound (max 256 iterations). |
+| `Unsupported match pattern: ...` | Only literal, singleton, and wildcard patterns supported. Structural/class/star patterns rejected. |
 | `Unknown function 'f' ... Add @verified or register in verified_contracts` | Add to `contracts=` with its own proof, or inline. |
 | `String constant '...' not supported` | Only `int`/`float`/`bool` constants are supported. |
 | `Only constant integer exponents 0–3 supported for **` | Replace `x ** n` with `x ** 2` or `x * x`. |

@@ -22,6 +22,7 @@
 | `%` | `x - y * (x // y)` | |
 | `**n` | unrolled multiply | `n` must be literal 0--3 |
 | `-x`, `+x` | direct | |
+| `math.pi`, `math.e` | Z3 real constants | Attribute access on `math` module |
 
 ### Comparisons
 
@@ -37,30 +38,51 @@ desugared to `z3.And(...)`.
 
 ### Builtins
 
-| Builtin | Z3 encoding |
-|---|---|
-| `min(a, b)` | `z3.If(a <= b, a, b)` |
-| `max(a, b)` | `z3.If(a >= b, a, b)` |
-| `abs(x)` | `z3.If(x >= 0, x, -x)` |
-
-`min`/`max` accept exactly 2 arguments. 3+ arguments are not supported.
+| Builtin | Z3 encoding | Notes |
+|---|---|---|
+| `min(a, b)` | `z3.If(a <= b, a, b)` | 2 args only |
+| `max(a, b)` | `z3.If(a >= b, a, b)` | 2 args only |
+| `abs(x)` | `z3.If(x >= 0, x, -x)` | |
+| `pow(x, n)` | unrolled multiplication | Same as `**`; literal `n` in 0--3 |
+| `bool(x)` | `z3.If(x != 0, 1, 0)` | Nonzero test; identity for `bool` |
+| `int(x)` | `z3.ToInt(x)` | Identity for `int`; `ToInt` for real; `If` for bool |
+| `float(x)` | `z3.ToReal(x)` | Identity for `float`; `ToReal` for int; `If` for bool |
+| `len(x)` | uninterpreted `>= 0` | Axiom: `len(x) >= 0` |
+| `round(x)` | `z3.ToInt(x)` | Identity for `int` |
+| `sum(...)` | folded `+` | |
+| `any(...)` | folded `z3.Or` | |
+| `all(...)` | folded `z3.And` | |
 
 ### Control flow
 
-| Construct | Translation |
-|---|---|
-| `if`/`elif`/`else` | Nested `z3.If` |
-| Early `return` | Path accumulation |
-| Ternary `a if cond else b` | `z3.If` |
-| `pass` | No-op |
+| Construct | Translation | Notes |
+|---|---|---|
+| `if`/`elif`/`else` | Nested `z3.If` | |
+| Early `return` | Path accumulation | |
+| Ternary `a if cond else b` | `z3.If` | |
+| `while cond: ...` | Bounded unrolling | Max 256 iterations |
+| `match`/`case` | Nested `z3.If` | Python 3.10+. Literal, singleton, wildcard, guards. |
+| `pass` | No-op | |
 
-### Variables
+### Variables and assignments
 
 | Construct | Notes |
 |---|---|
 | Local assignment (`x = expr`) | Symbolic substitution |
+| Augmented assignment (`x += expr`, `-=`, `*=`, etc.) | Desugared to `x = x op expr` |
+| Walrus operator (`(x := expr)`) | Inline assignment; binds in enclosing scope |
 | Module-level `int`/`float` constants | Concrete Z3 values |
 | Function parameters | Z3 symbolic variables |
+| `assert expr` | Translated to Z3 proof obligation |
+
+### Returns
+
+| Construct | Notes |
+|---|---|
+| Single value `return x` | Standard |
+| Tuple `return (a, b, ...)` | Z3 datatype with `__tuple_N_get_i` accessors |
+| Tuple unpacking `x, y = func(...)` | Supported via accessor axioms |
+| Constant subscript `t[0]`, `t[1]` | Integer literal indices on tuple-typed expressions |
 
 ### Verified function calls
 
@@ -72,8 +94,7 @@ Via `contracts=`. See [Compositionality](../concepts/compositionality.md).
 
 | Construct | Reason |
 |---|---|
-| `while` loops | Undecidable (requires loop invariant) |
-| Unbounded `for` | Same. Bounded `for i in range(N)` with literal `N` unrolled up to 256. |
+| Unbounded `while` / `for` | Bounded loops (max 256 iterations) are supported; unbounded raises `TranslationError` |
 | Recursion | Requires ranking function + inductive invariants |
 | `str`, `list`, `dict`, `set` | Outside SMT arithmetic fragment |
 | `lambda` in body | AST prevents source extraction |
@@ -84,6 +105,7 @@ Via `contracts=`. See [Compositionality](../concepts/compositionality.md).
 | Unverified calls | `TranslationError`. Add to `contracts=` or inline. |
 | `x ** y` (symbolic `y`) | Not representable in linear arithmetic |
 | Slicing, bitwise ops | Not in arithmetic fragment |
+| Structural `match` patterns | Class, star, and mapping patterns raise `TranslationError` |
 
 ---
 

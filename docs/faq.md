@@ -18,13 +18,25 @@ Parentheses required: `&` has lower precedence than `>=`.
 
 ---
 
-## Why no while loops?
+## Are while loops supported?
 
-Z3's quantifier-free arithmetic is decidable -- the solver always terminates.
-While loops make verification undecidable: you need a loop invariant, and invariant
-synthesis is an open research problem. provably rejects them with `TranslationError`.
+Yes, as of 0.3.0. Bounded `while` loops are unrolled up to 256 iterations, the same
+as `for i in range(N)`. The translator determines the bound from the precondition and
+loop condition.
 
-Bounded `for i in range(N)` with literal `N` is supported (unrolled up to 256 iterations).
+```python
+@verified(
+    pre=lambda n: (n >= 0) & (n <= 10),
+    post=lambda n, result: result == 0,
+)
+def countdown(n: int) -> int:
+    while n > 0:
+        n = n - 1
+    return n
+# countdown.__proof__.verified -> True
+```
+
+If the bound cannot be determined or exceeds 256, provably raises `TranslationError`.
 See [Supported Python](guides/supported-python.md).
 
 ---
@@ -150,7 +162,38 @@ def sqrt_approx(x: float) -> float:
 
 ---
 
+## Can provably use Lean4 instead of Z3?
+
+Yes. The `provably.lean4` module translates Python functions + contracts into Lean4
+theorem files and type-checks them with the Lean4 compiler.
+
+```python
+from provably import verify_with_lean4
+
+cert = verify_with_lean4(
+    my_func,
+    pre=lambda x: x >= 0,
+    post=lambda x, result: result >= 0,
+)
+cert.status  # Status.VERIFIED (if Lean4 closes the proof)
+```
+
+Use cases:
+
+- **Cross-checking**: verify the same contract with both Z3 and Lean4 for higher assurance.
+- **Exporting**: `export_lean4(func, pre=, post=, output_path="theorem.lean")` generates
+  a standalone `.lean` file for inclusion in a larger Lean4 project.
+- **De Bruijn kernel**: Lean4's type checker has a verified kernel, providing a different
+  trust basis than Z3's SMT solver.
+
+When Lean4 is not installed, `verify_with_lean4()` returns a `SKIPPED` certificate.
+Install via: `brew install elan-init && elan default stable`.
+
+See [API: provably.lean4](api/lean4.md) for full details.
+
+---
+
 ## Can provably prove itself?
 
-Yes. Ten self-proofs, all `VERIFIED`, enforced on every push.
+Yes. Sixteen self-proofs, all `VERIFIED`, enforced on every push.
 See [Self-Proof](self-proof.md).

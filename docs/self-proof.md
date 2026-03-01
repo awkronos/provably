@@ -21,8 +21,14 @@ Every function in `src/provably/_self_proof.py` carries a `ProofCertificate` at 
 | `identity(x)` | -- | `result == x` |
 | `negate_negate(x)` | -- | `result == x` |
 | `max_of_abs(a, b)` | -- | `result >= 0`, result is one of `a, -a, b, -b` |
+| `while_countdown(x)` | `0 <= x <= 10` | `result == 0` (while loop terminates at 0) |
+| `square_via_pow(x)` | `x >= 0` | `result >= 0`, `result == x * x` |
+| `abs_via_walrus(x)` | -- | `result >= 0`, `result == x \| result == -x` (uses `:=`) |
+| `float_cast_nonneg(x)` | `0 <= x <= 100` | `result >= 0` (int-to-float cast) |
+| `bool_cast_test(x)` | -- | truthiness mapping: `x >= 1 -> 1`, `x < 1 -> 0` |
+| `double_bounded(x)` | `1 <= x <= 5` | `1 <= result <= 10`, `result == x + x` (uses `+=`) |
 
-All ten: <span class="proof-qed proof-qed--glow">Q.E.D.</span>
+All sixteen: <span class="proof-qed proof-qed--glow">Q.E.D.</span>
 If any degrades to `COUNTEREXAMPLE` or `UNKNOWN`, CI fails.
 
 ---
@@ -83,6 +89,8 @@ either the translator has a bug or Z3 does. Either way, the self-proof catches i
 
 What self-proofs **cannot** guarantee: correct translation of constructs not exercised
 in `_self_proof.py`. Unknown constructs that trigger `TranslationError` are `SKIPPED`.
+As of 0.3.0, the self-proof module exercises while loops, walrus operators, augmented
+assignments, type casts (`float`, `bool`), and tuple returns -- covering most new constructs.
 
 ---
 
@@ -101,13 +109,14 @@ self-proof:
       run: uv run pytest tests/test_self_proof.py -v
 ```
 
-The test asserts all 10 functions have `status == VERIFIED`. No grace period.
+The test asserts all 16 functions have `status == VERIFIED`. No grace period.
 
 ---
 
 ## Why it matters
 
 - Exercises real branching, integer arithmetic, and multi-argument preconditions -- the core supported subset.
+- The six new self-proofs exercise `while` loops, walrus operators (`:=`), augmented assignments (`+=`), `float()` casts, and truthiness tests -- covering 0.3.0 constructs.
 - Regression safety net: any translator change that breaks a self-proof is caught before merge.
 - Concrete demonstration of what `VERIFIED` means.
 

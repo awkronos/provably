@@ -108,6 +108,78 @@ str(safe_div.__proof__)      # "[Q.E.D.] safe_div"
 
 ---
 
+## While loops
+
+Bounded `while` loops are unrolled up to 256 iterations, just like `for i in range(N)`:
+
+```python
+from provably import verified
+
+@verified(
+    pre=lambda n: (n >= 0) & (n <= 10),
+    post=lambda n, result: result == 0,
+)
+def countdown(n: int) -> int:
+    while n > 0:
+        n = n - 1
+    return n
+
+countdown.__proof__.verified  # True
+```
+
+The loop body is unrolled symbolically. If the bound cannot be determined statically
+or exceeds 256 iterations, provably raises `TranslationError`.
+
+---
+
+## Walrus operator
+
+The `:=` (named expression) operator is supported in all expression contexts:
+
+```python
+from provably import verified
+
+@verified(
+    post=lambda x, result: (result >= 0) & ((result == x) | (result == -x)),
+)
+def abs_walrus(x: float) -> float:
+    return (neg := -x) if x < 0 else x
+
+abs_walrus.__proof__.verified  # True
+```
+
+The walrus binding is visible to subsequent Z3 constraints in the enclosing scope.
+
+---
+
+## Match/case
+
+`match`/`case` statements (Python 3.10+) are desugared to `if`/`elif`/`else`:
+
+```python
+from provably import verified
+
+@verified(
+    pre=lambda direction: (direction >= 0) & (direction <= 3),
+    post=lambda direction, result: (result >= -1) & (result <= 1),
+)
+def direction_to_dx(direction: int) -> int:
+    match direction:
+        case 0:
+            return 1
+        case 1:
+            return -1
+        case _:
+            return 0
+
+direction_to_dx.__proof__.verified  # True
+```
+
+Literal values, singletons, wildcards, and guard clauses are supported.
+Structural and class patterns raise `TranslationError`.
+
+---
+
 ## What Q.E.D. means
 
 `__proof__.verified == True` means the Z3 SMT solver determined that the verification
