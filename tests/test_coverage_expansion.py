@@ -327,18 +327,22 @@ class TestLean4Coverage:
 
     def test_py_type_to_lean_int(self) -> None:
         from provably.lean4 import _py_type_to_lean
+
         assert _py_type_to_lean(int) == "Int"
 
     def test_py_type_to_lean_bool(self) -> None:
         from provably.lean4 import _py_type_to_lean
+
         assert _py_type_to_lean(bool) == "Bool"
 
     def test_py_type_to_lean_none(self) -> None:
         from provably.lean4 import _py_type_to_lean
+
         assert _py_type_to_lean(None) == "Float"
 
     def test_expr_to_lean_bool_constant(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.Constant(value=True)
         assert _expr_to_lean(node) == "true"
         node = ast.Constant(value=False)
@@ -346,6 +350,7 @@ class TestLean4Coverage:
 
     def test_expr_to_lean_binop(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.BinOp(
             left=ast.Name(id="x"),
             op=ast.Add(),
@@ -356,12 +361,14 @@ class TestLean4Coverage:
 
     def test_expr_to_lean_unaryop(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.UnaryOp(op=ast.USub(), operand=ast.Name(id="x"))
         result = _expr_to_lean(node)
         assert "-" in result
 
     def test_expr_to_lean_compare_chain(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.Compare(
             left=ast.Name(id="a"),
             ops=[ast.Lt(), ast.Lt()],
@@ -373,6 +380,7 @@ class TestLean4Coverage:
 
     def test_expr_to_lean_boolop(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.BoolOp(
             op=ast.Or(),
             values=[ast.Name(id="a"), ast.Name(id="b")],
@@ -382,6 +390,7 @@ class TestLean4Coverage:
 
     def test_expr_to_lean_ifexp(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.IfExp(
             test=ast.Name(id="c"),
             body=ast.Name(id="a"),
@@ -393,6 +402,7 @@ class TestLean4Coverage:
 
     def test_expr_to_lean_call_abs(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.Call(
             func=ast.Name(id="abs"),
             args=[ast.Name(id="x")],
@@ -403,12 +413,14 @@ class TestLean4Coverage:
 
     def test_expr_to_lean_unsupported(self) -> None:
         from provably.lean4 import _expr_to_lean
+
         node = ast.ListComp(elt=ast.Name(id="x"), generators=[])
         result = _expr_to_lean(node)
         assert "sorry" in result
 
     def test_if_to_lean_elif_chain(self) -> None:
         from provably.lean4 import _if_to_lean
+
         src = """
 if x < 0:
     return -1
@@ -426,6 +438,7 @@ else:
 
     def test_if_to_lean_no_else(self) -> None:
         from provably.lean4 import _if_to_lean
+
         src = """
 if x < 0:
     return -1
@@ -437,6 +450,7 @@ if x < 0:
 
     def test_func_body_augassign(self) -> None:
         from provably.lean4 import _func_body_to_lean
+
         src = """
 def f(x):
     x += 1
@@ -448,6 +462,7 @@ def f(x):
 
     def test_func_body_pass(self) -> None:
         from provably.lean4 import _func_body_to_lean
+
         src = """
 def f(x):
     pass
@@ -459,6 +474,7 @@ def f(x):
 
     def test_func_body_docstring_skipped(self) -> None:
         from provably.lean4 import _func_body_to_lean
+
         src = '''
 def f(x):
     """This is a docstring."""
@@ -470,11 +486,13 @@ def f(x):
 
     def test_z3_str_to_lean_not_conversion(self) -> None:
         from provably.lean4 import _z3_str_to_lean
+
         result = _z3_str_to_lean("Not(x > 0)", ["x"])
         assert "¬" in result
 
     def test_check_lean4_proof_available(self) -> None:
         from provably.lean4 import HAS_LEAN4, check_lean4_proof
+
         if not HAS_LEAN4:
             pytest.skip("Lean4 not installed")
         # Simple Lean4 that should type-check
@@ -485,6 +503,7 @@ def f(x):
 
     def test_check_lean4_proof_syntax_error(self) -> None:
         from provably.lean4 import HAS_LEAN4, check_lean4_proof
+
         if not HAS_LEAN4:
             pytest.skip("Lean4 not installed")
         ok, output = check_lean4_proof("this is not valid lean code !!!")
@@ -493,6 +512,7 @@ def f(x):
 
     def test_generate_theorem_not_function_def(self) -> None:
         from provably.lean4 import generate_lean4_theorem
+
         lean = generate_lean4_theorem(
             func_name="test",
             param_names=[],
@@ -514,30 +534,35 @@ class TestTypesModuleCoverage:
 
     def test_gt_init_and_repr(self) -> None:
         from provably.types import Gt
+
         g = Gt(5)
         assert g.bound == 5
         assert repr(g) == "Gt(5)"
 
     def test_ge_init_and_repr(self) -> None:
         from provably.types import Ge
+
         g = Ge(0)
         assert g.bound == 0
         assert repr(g) == "Ge(0)"
 
     def test_lt_init_and_repr(self) -> None:
         from provably.types import Lt
+
         lt = Lt(10)
         assert lt.bound == 10
         assert repr(lt) == "Lt(10)"
 
     def test_le_init_and_repr(self) -> None:
         from provably.types import Le
+
         le = Le(100)
         assert le.bound == 100
         assert repr(le) == "Le(100)"
 
     def test_between_init_and_repr(self) -> None:
         from provably.types import Between
+
         b = Between(0, 1)
         assert b.lo == 0
         assert b.hi == 1
@@ -545,40 +570,48 @@ class TestTypesModuleCoverage:
 
     def test_noteq_init_and_repr(self) -> None:
         from provably.types import NotEq
+
         n = NotEq(42)
         assert n.val == 42
         assert repr(n) == "NotEq(42)"
 
     def test_python_type_to_z3_sort_int(self) -> None:
         from provably.types import python_type_to_z3_sort
+
         assert python_type_to_z3_sort(int) == z3.IntSort()
 
     def test_python_type_to_z3_sort_float(self) -> None:
         from provably.types import python_type_to_z3_sort
+
         assert python_type_to_z3_sort(float) == z3.RealSort()
 
     def test_python_type_to_z3_sort_bool(self) -> None:
         from provably.types import python_type_to_z3_sort
+
         assert python_type_to_z3_sort(bool) == z3.BoolSort()
 
     def test_python_type_to_z3_sort_annotated(self) -> None:
         from typing import Annotated
 
         from provably.types import Gt, python_type_to_z3_sort
+
         assert python_type_to_z3_sort(Annotated[float, Gt(0)]) == z3.RealSort()
 
     def test_python_type_to_z3_sort_unknown_raises(self) -> None:
         from provably.types import python_type_to_z3_sort
+
         with pytest.raises(TypeError, match="No Z3 sort"):
             python_type_to_z3_sort(str)
 
     def test_make_z3_var_int(self) -> None:
         from provably.types import make_z3_var
+
         v = make_z3_var("x", int)
         assert v.sort() == z3.IntSort()
 
     def test_make_z3_var_bool(self) -> None:
         from provably.types import make_z3_var
+
         v = make_z3_var("b", bool)
         assert v.sort() == z3.BoolSort()
 
@@ -586,6 +619,7 @@ class TestTypesModuleCoverage:
         from typing import Annotated
 
         from provably.types import Gt, extract_refinements
+
         x = z3.Real("x")
         constraints = extract_refinements(Annotated[float, Gt(0)], x)
         assert len(constraints) >= 1
@@ -594,6 +628,7 @@ class TestTypesModuleCoverage:
         from typing import Annotated
 
         from provably.types import Between, extract_refinements
+
         x = z3.Real("x")
         constraints = extract_refinements(Annotated[float, Between(0, 1)], x)
         assert len(constraints) >= 2
@@ -602,12 +637,14 @@ class TestTypesModuleCoverage:
         from typing import Annotated
 
         from provably.types import NotEq, extract_refinements
+
         x = z3.Int("x")
         constraints = extract_refinements(Annotated[int, NotEq(0)], x)
         assert len(constraints) >= 1
 
     def test_extract_refinements_bare_type(self) -> None:
         from provably.types import extract_refinements
+
         x = z3.Real("x")
         constraints = extract_refinements(float, x)
         assert len(constraints) == 0
@@ -643,12 +680,14 @@ class TestHypothesisCoverage:
     def test_from_refinements_positive(self) -> None:
         from provably.hypothesis import from_refinements
         from provably.types import Positive
+
         strat = from_refinements(Positive)
         assert strat is not None
 
     def test_from_refinements_unit_interval(self) -> None:
         from provably.hypothesis import from_refinements
         from provably.types import UnitInterval
+
         strat = from_refinements(UnitInterval)
         assert strat is not None
 
@@ -676,6 +715,7 @@ class TestEngineCoverage:
 
     def test_verify_function_no_return(self) -> None:
         """Function with no return on all paths."""
+
         def no_return(x: float) -> float:
             y = x + 1
 
@@ -684,6 +724,7 @@ class TestEngineCoverage:
 
     def test_verify_function_post_exception(self) -> None:
         """Post lambda that raises."""
+
         def good(x: float) -> float:
             return x
 
@@ -695,6 +736,7 @@ class TestEngineCoverage:
 
     def test_verify_function_pre_exception(self) -> None:
         """Pre lambda that raises."""
+
         def good(x: float) -> float:
             return x
 
@@ -706,6 +748,7 @@ class TestEngineCoverage:
 
     def test_certificate_explain_verified(self) -> None:
         """Test explain() on a verified certificate."""
+
         def identity(x: float) -> float:
             return x
 
@@ -715,6 +758,7 @@ class TestEngineCoverage:
 
     def test_certificate_to_prompt_verified(self) -> None:
         """Test to_prompt() on verified cert."""
+
         def identity(x: float) -> float:
             return x
 
@@ -725,8 +769,10 @@ class TestEngineCoverage:
     def test_certificate_from_json_round_trip(self) -> None:
         """Test to_json/from_json round trip."""
         from provably.engine import ProofCertificate
+
         def identity(x: float) -> float:
             return x
+
         cert = verify_function(identity, post=lambda x, r: r == x)
         data = cert.to_json()
         restored = ProofCertificate.from_json(data)
@@ -735,8 +781,10 @@ class TestEngineCoverage:
 
     def test_certificate_str_verified(self) -> None:
         """Test __str__ on verified cert."""
+
         def identity(x: float) -> float:
             return x
+
         cert = verify_function(identity, post=lambda x, r: r == x)
         s = str(cert)
         assert "Q.E.D." in s
@@ -744,16 +792,20 @@ class TestEngineCoverage:
 
     def test_certificate_str_counterexample(self) -> None:
         """Test __str__ on counterexample cert."""
+
         def bad(x: float) -> float:
             return x
+
         cert = verify_function(bad, post=lambda x, r: r > x)
         s = str(cert)
         assert "DISPROVED" in s
 
     def test_explain_counterexample(self) -> None:
         """Test explain() on counterexample."""
+
         def bad(x: float) -> float:
             return x
+
         cert = verify_function(bad, post=lambda x, r: r > x)
         explanation = cert.explain()
         assert "Counterexample" in explanation
@@ -761,8 +813,10 @@ class TestEngineCoverage:
 
     def test_to_prompt_counterexample(self) -> None:
         """Test to_prompt() on counterexample."""
+
         def bad(x: float) -> float:
             return x
+
         cert = verify_function(bad, post=lambda x, r: r > x)
         prompt = cert.to_prompt()
         assert "DISPROVED" in prompt or "counterexample" in prompt.lower()
@@ -771,24 +825,28 @@ class TestEngineCoverage:
         """Test verify_module on _self_proof."""
         import provably._self_proof as sp
         from provably import verify_module
+
         results = verify_module(sp)
         assert len(results) >= 10  # At least original 10
 
     def test_configure_log_level(self) -> None:
         """Test configure with log_level."""
         from provably import configure
+
         configure(log_level="DEBUG")
         configure(log_level="WARNING")  # Reset
 
     def test_configure_unknown_key_raises(self) -> None:
         """Test configure with unknown key."""
         from provably import configure
+
         with pytest.raises(ValueError, match="Unknown"):
             configure(nonexistent_key=True)
 
     def test_clear_cache(self) -> None:
         """Test clear_cache."""
         from provably import clear_cache
+
         clear_cache()  # Should not raise
 
 
@@ -802,22 +860,27 @@ class TestDecoratorsCoverage:
 
     def test_runtime_checked_pre_violation(self) -> None:
         from provably import runtime_checked
+
         @runtime_checked(pre=lambda x: x > 0, raise_on_failure=True)
         def positive_only(x: float) -> float:
             return x
+
         with pytest.raises(Exception):  # noqa: B017
             positive_only(-1)
 
     def test_runtime_checked_post_violation(self) -> None:
         from provably import ContractViolationError, runtime_checked
+
         @runtime_checked(post=lambda x, result: result > 0, raise_on_failure=True)
         def returns_negative(x: float) -> float:
             return -x
+
         with pytest.raises(ContractViolationError):
             returns_negative(5)
 
     def test_verified_check_contracts_runtime(self) -> None:
         from provably import verified
+
         @verified(
             pre=lambda x: x >= 0,
             post=lambda x, r: r >= 0,
@@ -825,11 +888,13 @@ class TestDecoratorsCoverage:
         )
         def safe_double(x: float) -> float:
             return x * 2
+
         assert safe_double(5) == 10
         assert safe_double.__proof__.verified
 
     def test_contract_violation_error_fields(self) -> None:
         from provably import ContractViolationError
+
         err = ContractViolationError("pre", "test_fn", (1, 2), None)
         assert err.kind == "pre"
         assert err.func_name == "test_fn"
@@ -837,6 +902,7 @@ class TestDecoratorsCoverage:
     def test_verification_error_certificate(self) -> None:
         from provably import VerificationError
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="test",
             source_hash="abc",

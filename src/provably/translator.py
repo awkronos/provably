@@ -535,7 +535,11 @@ class Translator:
                 cond = subject == value
             elif hasattr(ast, "MatchSingleton") and isinstance(pattern, ast.MatchSingleton):
                 cond = subject == self._constant(pattern.value)
-            elif hasattr(ast, "MatchAs") and isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
+            elif (
+                hasattr(ast, "MatchAs")
+                and isinstance(pattern, ast.MatchAs)
+                and pattern.pattern is None
+            ):
                 # Wildcard: case _: (always matches)
                 cond = z3.BoolVal(True)
             else:
@@ -748,7 +752,11 @@ class Translator:
 
     def _attribute(self, node: ast.Attribute, env: dict[str, Any]) -> Any:
         """Translate attribute access (math.pi, math.e)."""
-        if isinstance(node.value, ast.Name) and node.value.id == "math" and node.attr in _MATH_CONSTANTS:
+        if (
+            isinstance(node.value, ast.Name)
+            and node.value.id == "math"
+            and node.attr in _MATH_CONSTANTS
+        ):
             return _MATH_CONSTANTS[node.attr]
         raise TranslationError(
             f"Unsupported attribute access: {ast.dump(node)}"
@@ -785,7 +793,9 @@ class Translator:
         # len() — returns an uninterpreted non-negative integer
         if fname == "len":
             if len(args) != 1:
-                raise TranslationError(f"len() takes exactly 1 argument (line {getattr(node, 'lineno', '?')})")
+                raise TranslationError(
+                    f"len() takes exactly 1 argument (line {getattr(node, 'lineno', '?')})"
+                )
             len_fn = z3.Function("__len", args[0].sort(), z3.IntSort())
             result = len_fn(args[0])
             self._constraints.append(result >= 0)  # len is always non-negative
@@ -794,7 +804,9 @@ class Translator:
         # round() — for integer rounding
         if fname == "round":
             if len(args) != 1:
-                raise TranslationError(f"round() takes 1 argument in this context (line {getattr(node, 'lineno', '?')})")
+                raise TranslationError(
+                    f"round() takes 1 argument in this context (line {getattr(node, 'lineno', '?')})"
+                )
             return z3.ToInt(args[0]) if args[0].sort() == z3.RealSort() else args[0]
 
         # Verified contract composition
@@ -889,8 +901,7 @@ class Translator:
             return accessor(base)
 
         raise TranslationError(
-            f"Subscript on non-tuple type not supported (line {lineno}). "
-            f"Base sort: {base.sort()}"
+            f"Subscript on non-tuple type not supported (line {lineno}). Base sort: {base.sort()}"
         )
 
     # ------------------------------------------------------------------

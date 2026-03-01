@@ -214,8 +214,11 @@ def _func_body_to_lean(func_ast: ast.FunctionDef, env: dict[str, str]) -> str:
                 name = stmt.target.id
                 val = _expr_to_lean(stmt.value, env)
                 op_map = {
-                    ast.Add: "+", ast.Sub: "-", ast.Mult: "*",
-                    ast.Div: "/", ast.Mod: "%",
+                    ast.Add: "+",
+                    ast.Sub: "-",
+                    ast.Mult: "*",
+                    ast.Div: "/",
+                    ast.Mod: "%",
                 }
                 op = op_map.get(type(stmt.op), "+")
                 current = env.get(name, name)
@@ -227,7 +230,11 @@ def _func_body_to_lean(func_ast: ast.FunctionDef, env: dict[str, str]) -> str:
                 val = _expr_to_lean(stmt.value, env)
                 env[stmt.target.id] = val
                 lines.append(f"let {stmt.target.id} := {val}")
-        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+        elif (
+            isinstance(stmt, ast.Expr)
+            and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str)
+        ):
             pass  # Skip docstrings
         elif isinstance(stmt, ast.Pass):
             pass
@@ -287,20 +294,24 @@ def generate_lean4_theorem(
 
     # Generate theorem from pre/post strings
     if pre_str and post_str:
-        lean_lines.extend([
-            f"theorem {func_name}_verified {param_decl}",
-            f"  (h_pre : {pre_str})",
-            f"  : {post_str} := by",
-            f"  unfold {func_name}_impl",
-            "  split_ifs <;> nlinarith",
-        ])
+        lean_lines.extend(
+            [
+                f"theorem {func_name}_verified {param_decl}",
+                f"  (h_pre : {pre_str})",
+                f"  : {post_str} := by",
+                f"  unfold {func_name}_impl",
+                "  split_ifs <;> nlinarith",
+            ]
+        )
     elif post_str:
-        lean_lines.extend([
-            f"theorem {func_name}_verified {param_decl}",
-            f"  : {post_str} := by",
-            f"  unfold {func_name}_impl",
-            "  split_ifs <;> nlinarith",
-        ])
+        lean_lines.extend(
+            [
+                f"theorem {func_name}_verified {param_decl}",
+                f"  : {post_str} := by",
+                f"  unfold {func_name}_impl",
+                "  split_ifs <;> nlinarith",
+            ]
+        )
     else:
         lean_lines.append(f"-- No postcondition to prove for {func_name}")
 
@@ -480,8 +491,14 @@ def verify_with_lean4(
             pass
 
     # Convert to Lean4 syntax
-    pre_lean = " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in pre_strs) if pre_strs else None
-    post_lean = " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in post_strs) if post_strs else None
+    pre_lean = (
+        " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in pre_strs) if pre_strs else None
+    )
+    post_lean = (
+        " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in post_strs)
+        if post_strs
+        else None
+    )
 
     # Replace 'result' with the actual function definition body
     if post_lean:
@@ -590,8 +607,14 @@ def export_lean4(
         except Exception:
             pass
 
-    pre_lean = " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in pre_strs) if pre_strs else None
-    post_lean = " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in post_strs) if post_strs else None
+    pre_lean = (
+        " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in pre_strs) if pre_strs else None
+    )
+    post_lean = (
+        " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in post_strs)
+        if post_strs
+        else None
+    )
 
     if post_lean:
         post_lean = post_lean.replace("result", f"({fname}_impl {' '.join(param_names)})")

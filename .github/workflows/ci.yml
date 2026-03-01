@@ -67,9 +67,11 @@ jobs:
       - name: Run tests
         run: |
           uv run pytest tests/ -v \
+            -p no:provably \
             --cov=src/provably \
             --cov-report=xml \
             --cov-report=term-missing \
+            --cov-branch \
             --cov-fail-under=80
 
       - name: Upload coverage artifact

@@ -31,7 +31,9 @@ class TestWhileLoops:
                 x = x - 1
             return x
 
-        cert = verify_function(countdown, pre=lambda x: (x >= 0) & (x <= 10), post=lambda x, result: result == 0)
+        cert = verify_function(
+            countdown, pre=lambda x: (x >= 0) & (x <= 10), post=lambda x, result: result == 0
+        )
         assert cert.verified, cert.message
 
     def test_while_with_accumulator(self) -> None:
@@ -43,7 +45,9 @@ class TestWhileLoops:
                 i = i + 1
             return total
 
-        cert = verify_function(sum_to_n, pre=lambda n: (n >= 0) & (n <= 5), post=lambda n, result: result >= 0)
+        cert = verify_function(
+            sum_to_n, pre=lambda n: (n >= 0) & (n <= 5), post=lambda n, result: result >= 0
+        )
         assert cert.verified, cert.message
 
     def test_while_false_never_enters(self) -> None:
@@ -76,7 +80,9 @@ class TestWalrusOperator:
         def abs_walrus(x: float) -> float:
             return (neg := -x) if x < 0 else x
 
-        cert = verify_function(abs_walrus, post=lambda x, result: (result >= 0) & ((result == x) | (result == -x)))
+        cert = verify_function(
+            abs_walrus, post=lambda x, result: (result >= 0) & ((result == x) | (result == -x))
+        )
         assert cert.verified, cert.message
 
     def test_walrus_translator_direct(self) -> None:

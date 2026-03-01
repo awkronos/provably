@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "provably"
-version = "0.2.1"
+version = "0.3.0"
 description = "Proof-carrying Python functions via Z3 — annotate, verify, ship."
 readme = "README.md"
 license = "MIT"
