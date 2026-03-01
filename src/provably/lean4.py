@@ -115,17 +115,17 @@ def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
     if isinstance(node, ast.Compare):
         parts = []
         left = _expr_to_lean(node.left, env)
-        for op, comparator in zip(node.ops, node.comparators, strict=False):
+        cmp_map: dict[type, str] = {
+            ast.Lt: "<",
+            ast.LtE: "≤",
+            ast.Gt: ">",
+            ast.GtE: "≥",
+            ast.Eq: "=",
+            ast.NotEq: "≠",
+        }
+        for cmp_op, comparator in zip(node.ops, node.comparators, strict=False):
             right = _expr_to_lean(comparator, env)
-            cmp_map = {
-                ast.Lt: "<",
-                ast.LtE: "≤",
-                ast.Gt: ">",
-                ast.GtE: "≥",
-                ast.Eq: "=",
-                ast.NotEq: "≠",
-            }
-            sym = cmp_map.get(type(op), "?")
+            sym = cmp_map.get(type(cmp_op), "?")
             parts.append(f"{left} {sym} {right}")
             left = right
         if len(parts) == 1:
@@ -433,8 +433,8 @@ def verify_with_lean4(
 
     # Parse
     tree = ast.parse(source)
-    func_ast = tree.body[0]
-    if not isinstance(func_ast, ast.FunctionDef):
+    func_ast_raw = tree.body[0]
+    if not isinstance(func_ast_raw, ast.FunctionDef):
         return ProofCertificate(
             function_name=fname,
             source_hash="",
@@ -443,6 +443,7 @@ def verify_with_lean4(
             postconditions=(),
             message="Not a function definition",
         )
+    func_ast: ast.FunctionDef = func_ast_raw
 
     # Extract param info
     try:
@@ -564,6 +565,8 @@ def export_lean4(
 
     tree = ast.parse(source)
     func_ast = tree.body[0]
+    if not isinstance(func_ast, ast.FunctionDef):
+        return "-- Error: not a function definition\n"
 
     try:
         from typing import get_type_hints
