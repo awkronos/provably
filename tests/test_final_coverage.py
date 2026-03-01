@@ -1741,10 +1741,10 @@ def f(x):
             t.translate(func_ast, {"x": z3.Int("x")})
 
     def test_pow_real_exponent_raises(self) -> None:
-        """x**2.0 where exponent is Real (not is_int_value) raises TranslationError."""
+        """x**2.5 where exponent is non-integer Real raises TranslationError."""
         t = Translator()
         base = z3.Real("x")
-        exp = z3.RealVal("2")  # RealVal — is_int_value returns False
+        exp = z3.RealVal("2.5")  # RealVal with non-integer value
         with pytest.raises(TranslationError, match="constant integer exponents"):
             t._pow(base, exp)
 

@@ -244,7 +244,7 @@ def f(x):
         x = z3.Real("x")
         func_ast = ast.parse(textwrap.dedent(src)).body[0]
         t = Translator()
-        with pytest.raises(TranslationError, match="simple function calls"):
+        with pytest.raises(TranslationError, match="Unsupported method call"):
             t.translate(func_ast, {"x": x})
 
     def test_subscript_raises(self) -> None:
@@ -258,7 +258,7 @@ def f(x):
         with pytest.raises(TranslationError):
             t.translate(func_ast, {"x": x})
 
-    def test_tuple_expression_raises(self) -> None:
+    def test_tuple_expression_supported(self) -> None:
         src = """
 def f(x):
     return (x, x)
@@ -266,8 +266,9 @@ def f(x):
         x = z3.Real("x")
         func_ast = ast.parse(textwrap.dedent(src)).body[0]
         t = Translator()
-        with pytest.raises(TranslationError, match="Tuple"):
-            t.translate(func_ast, {"x": x})
+        result = t.translate(func_ast, {"x": x})
+        # Tuple returns are now supported — should produce a result (IntSort tuple ID)
+        assert result.return_expr is not None
 
     def test_multiple_assign_targets_raises(self) -> None:
         src = """

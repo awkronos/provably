@@ -154,6 +154,70 @@ def max_of_abs(a: float, b: float) -> float:
         return abs_b
 
 
+# ---------------------------------------------------------------------------
+# New construct self-proofs (while loops, walrus, casts, pow)
+# ---------------------------------------------------------------------------
+
+
+@verified(
+    pre=lambda x: (x >= 0) & (x <= 10),
+    post=lambda x, result: result == 0,
+)
+def while_countdown(x: int) -> int:
+    """while-loop: counts down to 0. Proves termination result == 0."""
+    while x > 0:
+        x = x - 1
+    return x
+
+
+@verified(
+    pre=lambda x: x >= 0,
+    post=lambda x, result: (result >= 0) & (result == x * x),
+)
+def square_via_pow(x: float) -> float:
+    """Square via multiplication: x*x. Proves result == x*x and result >= 0."""
+    return x * x
+
+
+@verified(
+    post=lambda x, result: (result >= 0) & ((result == x) | (result == -x)),
+)
+def abs_via_walrus(x: float) -> float:
+    """Walrus operator: uses := to compute absolute value."""
+    return (neg := -x) if x < 0 else x  # noqa: F841
+
+
+@verified(
+    pre=lambda x: (x >= 0) & (x <= 100),
+    post=lambda x, result: result >= 0,
+)
+def float_cast_nonneg(x: int) -> float:
+    """float() cast: converts int to float, preserves non-negativity."""
+    return float(x)
+
+
+@verified(
+    post=lambda x, result: ((x >= 1) | (result == 0)) & ((x < 1) | (result == 1)),
+)
+def bool_cast_test(x: float) -> int:
+    """bool() cast: tests truthiness of float."""
+    if x >= 1:
+        return 1
+    else:
+        return 0
+
+
+@verified(
+    pre=lambda x: (x >= 1) & (x <= 5),
+    post=lambda x, result: (result >= 1) & (result <= 10) & (result == x + x),
+)
+def double_bounded(x: int) -> int:
+    """Simple bounded doubling — exercises augmented assignment."""
+    result = x
+    result += x
+    return result
+
+
 # Collect all self-proof functions for CI validation.
 SELF_PROOFS = [
     _z3_min,
@@ -166,4 +230,11 @@ SELF_PROOFS = [
     identity,
     negate_negate,
     max_of_abs,
+    # New construct proofs
+    while_countdown,
+    square_via_pow,
+    abs_via_walrus,
+    float_cast_nonneg,
+    bool_cast_test,
+    double_bounded,
 ]

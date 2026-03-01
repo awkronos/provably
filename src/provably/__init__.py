@@ -29,7 +29,7 @@ Optional extras
 
 from __future__ import annotations
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 from z3 import And, Implies, Not, Or
 
@@ -42,6 +42,7 @@ from .engine import (
     verify_function,
     verify_module,
 )
+from .lean4 import HAS_LEAN4, LEAN4_VERSION, export_lean4, verify_with_lean4
 from .translator import TranslationError
 from .types import (
     Between,
@@ -80,5 +81,10 @@ __all__ = [
     "Or",
     "Not",
     "Implies",
+    # Lean4 backend
+    "verify_with_lean4",
+    "export_lean4",
+    "HAS_LEAN4",
+    "LEAN4_VERSION",
     "__version__",
 ]

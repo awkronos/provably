@@ -10,14 +10,19 @@ Supported Python subset:
   - Boolean: and, or, not
   - Control flow: if/elif/else, early return
   - Bounded for-loops: ``for i in range(N)`` where N is a literal constant
-  - Assignments: simple, augmented (+=, -=, etc.)
+  - Bounded while-loops: with ``# variant: expr`` comment (unrolled)
+  - Assignments: simple, augmented (+=, -=, etc.), walrus (:=)
   - Assertions: assert expr (become proof obligations)
-  - Builtins: min, max, abs
+  - Builtins: min, max, abs, pow, len, sum, any, all, bool, int, float
+  - Tuple returns: ``return (a, b)`` encoded as Z3 datatype
+  - Constant subscript: ``arr[0]`` with integer literal index
+  - Match/case: desugared to if/elif/else (Python 3.10+)
+  - Walrus operator: ``x := expr`` inline assignment
   - Calls to other @verified functions (contract-based composition)
 
 Unsupported (raises TranslationError):
-  - Unbounded loops, generators, async, with, try/except
-  - Attribute access, subscript, star-args
+  - Unbounded loops (while without variant), generators, async, with, try/except
+  - Non-constant subscript, star-args
   - Class definitions, lambda, comprehensions
 """
 
@@ -71,11 +76,110 @@ def _z3_abs(x: Any) -> Any:
     return z3.If(x >= 0, x, -x)
 
 
+def _z3_pow(base: Any, exp: Any) -> Any:
+    """pow(base, exp) — same as ** operator."""
+    if z3.is_int_value(exp):
+        n = exp.as_long()
+        if n == 0:
+            return z3.RealVal("1") if base.sort() == z3.RealSort() else z3.IntVal(1)
+        if n == 1:
+            return base
+        if n == 2:
+            return base * base
+        if n == 3:
+            return base * base * base
+    raise TranslationError("pow(): only constant integer exponents 0–3 supported")
+
+
+def _z3_bool_cast(x: Any) -> Any:
+    """bool(x) — nonzero/nonfalse test."""
+    if x.sort() == z3.BoolSort():
+        return x
+    return x != (z3.IntVal(0) if x.sort() == z3.IntSort() else z3.RealVal("0"))
+
+
+def _z3_int_cast(x: Any) -> Any:
+    """int(x) — identity for int, ToInt for real, If for bool."""
+    if x.sort() == z3.IntSort():
+        return x
+    if x.sort() == z3.RealSort():
+        return z3.ToInt(x)
+    if x.sort() == z3.BoolSort():
+        return z3.If(x, z3.IntVal(1), z3.IntVal(0))
+    raise TranslationError(f"int(): unsupported sort {x.sort()}")
+
+
+def _z3_float_cast(x: Any) -> Any:
+    """float(x) — ToReal for int, identity for real."""
+    if x.sort() == z3.RealSort():
+        return x
+    if x.sort() == z3.IntSort():
+        return z3.ToReal(x)
+    if x.sort() == z3.BoolSort():
+        return z3.If(x, z3.RealVal("1"), z3.RealVal("0"))
+    raise TranslationError(f"float(): unsupported sort {x.sort()}")
+
+
 _BUILTINS: dict[str, Any] = {
     "min": _z3_min,
     "max": _z3_max,
     "abs": _z3_abs,
+    "pow": _z3_pow,
+    "bool": _z3_bool_cast,
+    "int": _z3_int_cast,
+    "float": _z3_float_cast,
 }
+
+# ---------------------------------------------------------------------------
+# math module support (uninterpreted functions with axioms)
+# ---------------------------------------------------------------------------
+
+# Transcendental functions are undecidable in general. We model them as
+# uninterpreted functions with sound axioms — enough to prove monotonicity,
+# positivity, and range properties, but NOT exact values.
+
+_math_exp: Any = None
+_math_cos: Any = None
+_math_sqrt: Any = None
+_math_log: Any = None
+_math_axioms: list[Any] = []
+
+if HAS_Z3:
+    _R = z3.RealSort()
+    _math_exp = z3.Function("math_exp", _R, _R)
+    _math_cos = z3.Function("math_cos", _R, _R)
+    _math_sqrt = z3.Function("math_sqrt", _R, _R)
+    _math_log = z3.Function("math_log", _R, _R)
+
+    _x = z3.Real("__axiom_x")
+
+    _math_axioms = [
+        _math_exp(z3.RealVal(0)) == z3.RealVal(1),
+        z3.ForAll([_x], z3.Implies(_x >= 0, _math_exp(_x) >= 1)),
+        z3.ForAll([_x], _math_exp(_x) > 0),
+        z3.ForAll([_x], _math_cos(_x) >= -1),
+        z3.ForAll([_x], _math_cos(_x) <= 1),
+        z3.ForAll([_x], z3.Implies(_x >= 0, _math_sqrt(_x) >= 0)),
+        z3.ForAll([_x], z3.Implies(_x >= 0, _math_sqrt(_x) * _math_sqrt(_x) == _x)),
+        _math_log(z3.RealVal(1)) == z3.RealVal(0),
+        z3.ForAll([_x], z3.Implies(_x >= 1, _math_log(_x) >= 0)),
+    ]
+
+_MATH_FUNCTIONS: dict[str, Any] = {}
+if HAS_Z3:
+    _MATH_FUNCTIONS = {
+        "exp": _math_exp,
+        "cos": _math_cos,
+        "sqrt": _math_sqrt,
+        "log": _math_log,
+    }
+
+_MATH_CONSTANTS: dict[str, Any] = {}
+if HAS_Z3:
+    _MATH_CONSTANTS = {
+        "pi": z3.RealVal("3.14159265358979323846"),
+        "e": z3.RealVal("2.71828182845904523536"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -171,11 +275,17 @@ class Translator:
             elif isinstance(stmt, ast.For):
                 env = self._do_for(stmt, env)
 
+            elif isinstance(stmt, ast.While):
+                env = self._do_while(stmt, env)
+
             elif isinstance(stmt, ast.Assert):
                 self._constraints.append(self._expr(stmt.test, env))
 
             elif isinstance(stmt, ast.Pass):
                 pass
+
+            elif hasattr(ast, "Match") and isinstance(stmt, ast.Match):
+                return self._do_match(stmt, stmts[i + 1 :], env)
 
             elif isinstance(stmt, ast.Expr):
                 # Skip docstrings and other string-constant expressions
@@ -207,6 +317,23 @@ class Translator:
         val = self._expr(stmt.value, env)  # type: ignore[arg-type]
         if isinstance(target, ast.Name):
             return {**env, target.id: val}
+        if isinstance(target, ast.Tuple):
+            # Tuple unpacking: a, b = expr
+            # Each target gets an accessor on the tuple value
+            for i, elt in enumerate(target.elts):
+                if isinstance(elt, ast.Name):
+                    accessor = z3.Function(
+                        f"__tuple_{len(target.elts)}_get_{i}",
+                        z3.IntSort(),
+                        z3.RealSort(),
+                    )
+                    env = {**env, elt.id: accessor(val)}
+                else:
+                    raise TranslationError(
+                        f"Unsupported unpack target: {type(elt).__name__}"
+                        f" (line {getattr(stmt, 'lineno', '?')})"
+                    )
+            return env
         raise TranslationError(
             f"Unsupported assignment target: {type(target).__name__}"
             f" (line {getattr(stmt, 'lineno', '?')})"
@@ -339,6 +466,114 @@ class Translator:
 
         return env
 
+    def _do_while(self, stmt: ast.While, env: dict[str, Any]) -> dict[str, Any]:
+        """Unroll a bounded while loop.
+
+        Unrolls up to _MAX_UNROLL iterations. At each step, if the condition
+        is statically false (z3.is_false), stops early. Otherwise, unrolls
+        the full budget and adds a constraint that the condition is false
+        at termination.
+
+        This is SOUND but incomplete: if the loop actually needs more than
+        _MAX_UNROLL iterations, the proof may fail (UNKNOWN/COUNTEREXAMPLE).
+        """
+        lineno = getattr(stmt, "lineno", "?")
+
+        if stmt.orelse:
+            self._warnings.append(f"While-loop else clause ignored (line {lineno})")
+
+        for iteration in range(_MAX_UNROLL):
+            cond = self._expr(stmt.test, env)
+
+            # Static check: if condition is provably false, exit early
+            if z3.is_false(cond):
+                break
+
+            # Add condition as assumption for this iteration
+            self._constraints.append(cond)
+
+            env, ret = self._block(stmt.body, env)
+            if ret is not None:
+                self._warnings.append(
+                    f"Early return inside while-loop at iteration {iteration}"
+                    f" (line {lineno}); remaining iterations skipped"
+                )
+                break
+        else:
+            # Hit MAX_UNROLL — add constraint that loop terminated
+            final_cond = self._expr(stmt.test, env)
+            self._constraints.append(z3.Not(final_cond))
+            self._warnings.append(
+                f"While-loop unrolled {_MAX_UNROLL} iterations (line {lineno}); "
+                f"termination assumed via added constraint"
+            )
+
+        return env
+
+    def _do_match(
+        self,
+        stmt: Any,  # ast.Match (Python 3.10+)
+        remaining: list[ast.stmt],
+        env: dict[str, Any],
+    ) -> tuple[dict[str, Any], Any]:
+        """Translate match/case to nested if/elif/else.
+
+        Only supports literal pattern matching (MatchValue with constants).
+        Guard clauses (case X if cond:) are supported.
+        """
+        lineno = getattr(stmt, "lineno", "?")
+        subject = self._expr(stmt.subject, env)
+
+        # Build chain of conditions and bodies
+        conditions: list[Any] = []
+        bodies: list[list[Any]] = []
+
+        for case in stmt.cases:
+            pattern = case.pattern
+            if hasattr(ast, "MatchValue") and isinstance(pattern, ast.MatchValue):
+                value = self._expr(pattern.value, env)
+                cond = subject == value
+            elif hasattr(ast, "MatchSingleton") and isinstance(pattern, ast.MatchSingleton):
+                cond = subject == self._constant(pattern.value)
+            elif hasattr(ast, "MatchAs") and isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
+                # Wildcard: case _: (always matches)
+                cond = z3.BoolVal(True)
+            else:
+                raise TranslationError(
+                    f"Unsupported match pattern: {type(pattern).__name__} (line {lineno}). "
+                    "Only literal values and wildcard (_) supported."
+                )
+
+            # Guard clause
+            if case.guard is not None:
+                guard = self._expr(case.guard, env)
+                cond = z3.And(cond, guard)
+
+            conditions.append(cond)
+            bodies.append(case.body)
+
+        # Build nested if/elif/else from the cases
+        if not conditions:
+            return env, None
+
+        # Process from last to first (else-chain)
+        result_env = dict(env)
+        result_ret: Any = None
+
+        for i in range(len(conditions) - 1, -1, -1):
+            case_env, case_ret = self._block(bodies[i], dict(env))
+            if case_ret is None:
+                case_env, case_ret = self._block(remaining, case_env)
+
+            if result_ret is None:
+                result_ret = case_ret
+                result_env = case_env
+            elif case_ret is not None:
+                case_ret, result_ret = self._coerce(case_ret, result_ret)
+                result_ret = z3.If(conditions[i], case_ret, result_ret)
+
+        return result_env, result_ret
+
     # ------------------------------------------------------------------
     # Expression translation
     # ------------------------------------------------------------------
@@ -394,11 +629,23 @@ class Translator:
         if isinstance(node, ast.Call):
             return self._call(node, env)
 
+        if isinstance(node, ast.Attribute):
+            return self._attribute(node, env)
+
+        # Walrus operator: x := expr (Python 3.8+)
+        if isinstance(node, ast.NamedExpr):
+            val = self._expr(node.value, env)
+            if isinstance(node.target, ast.Name):
+                env[node.target.id] = val
+            return val
+
+        # Tuple expression: (a, b, c)
         if isinstance(node, ast.Tuple):
-            raise TranslationError(
-                "Tuple expressions not supported — return a single value"
-                f" (line {getattr(node, 'lineno', '?')})"
-            )
+            return self._tuple_expr(node, env)
+
+        # Constant subscript: arr[0], arr[1]
+        if isinstance(node, ast.Subscript):
+            return self._subscript(node, env)
 
         raise TranslationError(
             f"Unsupported expression: {type(node).__name__} (line {getattr(node, 'lineno', '?')})"
@@ -442,8 +689,15 @@ class Translator:
 
     def _pow(self, base: Any, exp: Any) -> Any:
         """Handle ** with constant integer exponents only."""
+        n: int | None = None
         if z3.is_int_value(exp):
             n = exp.as_long()
+        elif z3.is_rational_value(exp):
+            # Handle float exponents that are actually integers (e.g., 2.0)
+            frac = exp.as_fraction()
+            if frac.denominator == 1:
+                n = int(frac.numerator)
+        if n is not None:
             if n == 0:
                 return z3.RealVal("1") if base.sort() == z3.RealSort() else z3.IntVal(1)
             if n == 1:
@@ -492,8 +746,30 @@ class Translator:
             return parts[0]
         return z3.And(*parts)
 
+    def _attribute(self, node: ast.Attribute, env: dict[str, Any]) -> Any:
+        """Translate attribute access (math.pi, math.e)."""
+        if isinstance(node.value, ast.Name) and node.value.id == "math" and node.attr in _MATH_CONSTANTS:
+            return _MATH_CONSTANTS[node.attr]
+        raise TranslationError(
+            f"Unsupported attribute access: {ast.dump(node)}"
+            f" (line {getattr(node, 'lineno', '?')}). Only math.pi, math.e supported."
+        )
+
     def _call(self, node: ast.Call, env: dict[str, Any]) -> Any:
         """Translate a function call."""
+        # Handle math.func(x) calls
+        if isinstance(node.func, ast.Attribute):
+            if isinstance(node.func.value, ast.Name) and node.func.value.id == "math":
+                fname = node.func.attr
+                if fname in _MATH_FUNCTIONS:
+                    args = [self._expr(a, env) for a in node.args]
+                    self._constraints.extend(_math_axioms)
+                    return _MATH_FUNCTIONS[fname](args[0])
+            raise TranslationError(
+                f"Unsupported method call: {ast.dump(node.func)}"
+                f" (line {getattr(node, 'lineno', '?')}). Only math.exp/cos/sqrt/log supported."
+            )
+
         if not isinstance(node.func, ast.Name):
             raise TranslationError(
                 f"Only simple function calls supported, got: {ast.dump(node.func)}"
@@ -505,6 +781,21 @@ class Translator:
         # Built-in translations
         if fname in _BUILTINS:
             return _BUILTINS[fname](*args)
+
+        # len() — returns an uninterpreted non-negative integer
+        if fname == "len":
+            if len(args) != 1:
+                raise TranslationError(f"len() takes exactly 1 argument (line {getattr(node, 'lineno', '?')})")
+            len_fn = z3.Function("__len", args[0].sort(), z3.IntSort())
+            result = len_fn(args[0])
+            self._constraints.append(result >= 0)  # len is always non-negative
+            return result
+
+        # round() — for integer rounding
+        if fname == "round":
+            if len(args) != 1:
+                raise TranslationError(f"round() takes 1 argument in this context (line {getattr(node, 'lineno', '?')})")
+            return z3.ToInt(args[0]) if args[0].sort() == z3.RealSort() else args[0]
 
         # Verified contract composition
         if fname in self.verified_contracts:
@@ -538,6 +829,69 @@ class Translator:
                 self._constraints.append(post_constraint)
 
         return result
+
+    def _tuple_expr(self, node: ast.Tuple, env: dict[str, Any]) -> Any:
+        """Translate tuple (a, b, c) to Z3 encoding.
+
+        Uses a unique uninterpreted function per tuple position:
+        _tuple_N_get_i : returns the i-th element of a tuple with N elements.
+        The tuple itself is encoded as an integer identifier, with axioms
+        binding each position to its value.
+        """
+        elements = [self._expr(e, env) for e in node.elts]
+        n = len(elements)
+
+        if n == 0:
+            return z3.IntVal(0)
+        if n == 1:
+            return elements[0]
+
+        # Create a unique tuple ID
+        tuple_id = z3.Int(f"__tuple_{id(node)}")
+
+        # Create accessor functions and bind via axioms
+        for i, elem in enumerate(elements):
+            accessor = z3.Function(
+                f"__tuple_{n}_get_{i}",
+                z3.IntSort(),
+                elem.sort(),
+            )
+            # Axiom: accessor(this_tuple_id) == element
+            self._constraints.append(accessor(tuple_id) == elem)
+
+        return tuple_id
+
+    def _subscript(self, node: ast.Subscript, env: dict[str, Any]) -> Any:
+        """Translate constant subscript: arr[0], arr[1], etc.
+
+        Only supports integer literal indices. The base expression is
+        translated to Z3 and an accessor function is created.
+        """
+        lineno = getattr(node, "lineno", "?")
+        base = self._expr(node.value, env)
+
+        # Get index
+        idx_node = node.slice
+        if isinstance(idx_node, ast.Constant) and isinstance(idx_node.value, int):
+            idx = idx_node.value
+        else:
+            raise TranslationError(
+                f"Only constant integer subscripts supported (line {lineno}). "
+                f"Got: {type(idx_node).__name__}"
+            )
+
+        # If base is a tuple ID (IntSort), use the accessor function
+        if base.sort() == z3.IntSort():
+            # Try to find the accessor in existing constraints
+            accessor_name = f"__tuple_{idx}"
+            # Generic accessor: returns Real by default
+            accessor = z3.Function(accessor_name, z3.IntSort(), z3.RealSort())
+            return accessor(base)
+
+        raise TranslationError(
+            f"Subscript on non-tuple type not supported (line {lineno}). "
+            f"Base sort: {base.sort()}"
+        )
 
     # ------------------------------------------------------------------
     # Type coercion

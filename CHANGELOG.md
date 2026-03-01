@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.3.0 (2026-02-28)
+
+### While loops
+
+- Bounded `while` loops now supported, unrolled up to 256 iterations (same limit as `for` loops)
+- Optional `# variant: expr` comment for documentation; loops without a termination proof are still unrolled
+- Early `return` inside while-loops is handled (remaining iterations skipped with a warning)
+
+### Walrus operator
+
+- `:=` (named expressions / walrus operator) supported in all expression contexts
+- Inline assignments bind the variable in the enclosing scope for subsequent Z3 constraints
+
+### Match/case (Python 3.10+)
+
+- `match`/`case` statements desugared to `if`/`elif`/`else` chains for Z3 translation
+- Supported patterns: literal values (`MatchValue`), singletons (`MatchSingleton`), and wildcard (`case _:`)
+- Guard clauses (`case X if cond:`) supported
+- Unsupported patterns (e.g., structural, star, class) raise `TranslationError`
+
+### Tuple returns
+
+- `return (a, b, ...)` encoded as Z3 datatype with uninterpreted accessor functions
+- Each tuple element gets a unique `__tuple_N_get_i` accessor bound by axioms
+- Tuple unpacking in assignments (`x, y = func(...)`) supported
+
+### Constant subscript
+
+- `arr[0]`, `arr[1]`, etc. supported for tuple-typed expressions
+- Only integer literal indices allowed; non-constant subscripts raise `TranslationError`
+
+### New builtins
+
+- `pow(base, exp)` — constant integer exponents 0-3 (same as `**`)
+- `bool(x)` — nonzero/nonfalse test (identity for bool, `!= 0` for int/real)
+- `int(x)` — identity for int, `ToInt` for real, `If` for bool
+- `float(x)` — identity for real, `ToReal` for int, `If` for bool
+- `len(x)` — returns an uninterpreted non-negative integer (`len(x) >= 0` axiom added)
+- `round(x)` — maps to `ToInt` for real, identity for int
+
+### Lean4 backend
+
+- `verify_with_lean4(func, pre=, post=)` — verify using Lean4 type checker instead of (or alongside) Z3
+- `export_lean4(func, pre=, post=, output_path=)` — export a `@verified` function as a Lean4 theorem file
+- `HAS_LEAN4` / `LEAN4_VERSION` — runtime detection of Lean4 installation
+- Translates Python AST to Lean4 syntax (arithmetic, comparisons, if/elif/else, let bindings)
+- Generates `noncomputable def` + `theorem ... := by unfold; split_ifs <;> nlinarith`
+- Graceful degradation: returns `SKIPPED` certificate when Lean4 is not installed
+
+### Other improvements
+
+- `assert` statements translated to Z3 proof obligations
+- Augmented assignments (`+=`, `-=`, `*=`, etc.) fully supported
+- Chained comparisons (`a <= b <= c`) fully supported
+- `math.pi` and `math.e` attribute access supported
+- `sum()`, `any()`, `all()` builtins supported
+
 ## 0.2.0 (2026-02-28)
 
 ### Hypothesis bridge (`provably[hypothesis]`)
