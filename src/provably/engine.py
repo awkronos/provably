@@ -654,7 +654,7 @@ def verify_function(
             z3_version=z3_ver,
         )
     elif check == z3.sat:
-        ce = _extract_counterexample(s.model(), param_vars, ret)
+        ce = _extract_counterexample(s.model(), param_vars, ret, result.tuple_meta)
         cert = ProofCertificate(
             function_name=fname,
             source_hash=_source_hash(source),
@@ -732,14 +732,35 @@ def _extract_counterexample(
     model: Any,
     param_vars: dict[str, Any],
     return_expr: Any,
+    tuple_meta: dict[str, tuple[int, list[Any]]] | None = None,
 ) -> dict[str, Any]:
-    """Extract human-readable counterexample from a Z3 model."""
+    """Extract human-readable counterexample from a Z3 model.
+
+    When the function returns a tuple, ``return_expr`` is a Z3 integer
+    identifier (an opaque tuple id), which is useless to the caller. We
+    detect this via ``tuple_meta`` and evaluate each accessor instead,
+    returning the result as a real Python tuple.
+    """
     ce: dict[str, Any] = {}
     for name, var in param_vars.items():
         val = model.eval(var, model_completion=True)
         ce[name] = _z3_val_to_python(val)
-    ret_val = model.eval(return_expr, model_completion=True)
-    ce["__return__"] = _z3_val_to_python(ret_val)
+
+    if tuple_meta is not None and str(return_expr) in tuple_meta:
+        arity, elem_sorts = tuple_meta[str(return_expr)]
+        elements: list[int | float | bool | str] = []
+        for i in range(arity):
+            accessor = z3.Function(
+                f"__tuple_{arity}_get_{i}",
+                z3.IntSort(),
+                elem_sorts[i],
+            )
+            elem_val = model.eval(accessor(return_expr), model_completion=True)
+            elements.append(_z3_val_to_python(elem_val))
+        ce["__return__"] = tuple(elements)
+    else:
+        ret_val = model.eval(return_expr, model_completion=True)
+        ce["__return__"] = _z3_val_to_python(ret_val)
     return ce
 
 
