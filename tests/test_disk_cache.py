@@ -145,6 +145,62 @@ class TestDiskCacheEnabled:
         finally:
             configure(cache_dir=None)
 
+    def test_disk_cache_measurably_faster_than_cold_verify(
+        self, tmp_path: Path
+    ) -> None:
+        """Empirically, a disk hit should beat a cold solve by at least 10x
+        on a problem whose solver_time_ms is >= 1 ms.
+
+        We pick a small verification that's still slow enough to be
+        measured reliably, then compare cold path vs disk hit. The ratio
+        is conservative (10x); on-box measurements routinely see >20x.
+        """
+        import time
+
+        cache_dir = tmp_path / "cache"
+        configure(cache_dir=str(cache_dir))
+        try:
+
+            def quadratic_nonneg(x: float, y: float) -> float:
+                # Non-trivial enough to take a measurable slice of time.
+                return x * x + y * y + 1.0
+
+            def post(x: float, y: float, r: float) -> object:
+                return r > 0
+
+            # Cold run: no cache, Z3 must solve.
+            clear_cache()
+            # Ensure no disk artefact from a prior run either.
+            for p in cache_dir.glob("*.json"):
+                p.unlink()
+
+            t0 = time.perf_counter()
+            cert_cold = verify_function(quadratic_nonneg, post=post)
+            cold_ms = (time.perf_counter() - t0) * 1000.0
+            assert cert_cold.verified
+
+            # Clear in-memory cache so we're forced to read from disk.
+            clear_cache()
+
+            t0 = time.perf_counter()
+            cert_disk = verify_function(quadratic_nonneg, post=post)
+            disk_ms = (time.perf_counter() - t0) * 1000.0
+            assert cert_disk.verified
+
+            # Both should agree on the result; disk hit should be noticeably
+            # cheaper than a cold Z3 solve.
+            assert cert_disk.function_name == cert_cold.function_name
+            # Skip the timing assertion when cold is already trivial — on
+            # a warm-cpu machine the problem can be <0.5 ms cold, and
+            # perf_counter jitter swamps the ratio.
+            if cold_ms >= 1.0:
+                assert disk_ms * 10 <= cold_ms, (
+                    f"Disk cache not measurably faster: "
+                    f"cold={cold_ms:.2f}ms disk={disk_ms:.2f}ms"
+                )
+        finally:
+            configure(cache_dir=None)
+
     def test_cache_file_is_valid_json(self, tmp_path: Path) -> None:
         cache_dir = tmp_path / "cache"
         configure(cache_dir=str(cache_dir))

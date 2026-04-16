@@ -161,3 +161,115 @@ class TestLean4Version:
     @pytest.mark.skipif(not HAS_LEAN4, reason="Lean4 not installed")
     def test_version_string(self) -> None:
         assert "Lean" in LEAN4_VERSION or "lean" in LEAN4_VERSION.lower()
+
+
+class TestLean4CoreMode:
+    """Pure-Int/Bool functions produce kernel-clean Lean (no Mathlib).
+
+    The whole point of the Lean4 backend is to give the user a second,
+    independent kernel check. That promise is only meaningful if the
+    output actually compiles with ``lean`` out of the box.
+    """
+
+    def test_int_function_uses_core_mode(self) -> None:
+        source = (
+            "def abs_like(x: int) -> int:\n"
+            "    if x >= 0:\n"
+            "        return x\n"
+            "    else:\n"
+            "        return -x\n"
+        )
+        lean = generate_lean4_theorem(
+            func_name="abs_like",
+            param_names=["x"],
+            param_types={"x": int},
+            pre_str=None,
+            post_str="abs_like_impl x ≥ 0",
+            source=source,
+        )
+        # No Mathlib import.
+        assert "import Mathlib" not in lean
+        # Core tactics only.
+        assert "nlinarith" not in lean
+        assert "omega" in lean or "decide" in lean or "rfl" in lean
+        # Plain def, not noncomputable def.
+        assert "noncomputable def" not in lean
+        assert "def abs_like_impl" in lean
+        # Mode banner.
+        assert "Mode: core" in lean
+
+    def test_float_function_uses_mathlib_mode(self) -> None:
+        source = "def clip(x: float) -> float:\n    return x\n"
+        lean = generate_lean4_theorem(
+            func_name="clip",
+            param_names=["x"],
+            param_types={"x": float},
+            pre_str=None,
+            post_str="clip_impl x ≥ 0",
+            source=source,
+        )
+        assert "import Mathlib" in lean
+        assert "noncomputable def" in lean
+        assert "Mode: mathlib" in lean
+
+    @pytest.mark.skipif(not HAS_LEAN4, reason="Lean4 not installed")
+    def test_core_mode_passes_kernel_and_is_clean(self) -> None:
+        """End-to-end: generated core-mode Lean compiles AND reports only
+        standard foundational axioms."""
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        source = (
+            "def abs_like(x: int) -> int:\n"
+            "    if x >= 0:\n"
+            "        return x\n"
+            "    else:\n"
+            "        return -x\n"
+        )
+        lean = generate_lean4_theorem(
+            func_name="abs_like",
+            param_names=["x"],
+            param_types={"x": int},
+            pre_str=None,
+            post_str="abs_like_impl x ≥ 0",
+            source=source,
+        )
+        # Append an axioms audit line.
+        audited = lean + "\n\n#print axioms abs_like_verified\n"
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".lean", delete=False, prefix="provably_core_"
+        ) as f:
+            f.write(audited)
+            tmp_path = f.name
+        try:
+            result = subprocess.run(
+                ["lean", tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            out = result.stdout + result.stderr
+            assert result.returncode == 0, f"lean failed: {out[:500]}"
+            # Only Lean foundational axioms allowed. No 'sorry', no
+            # Mathlib lemmas, no user axioms.
+            assert "sorry" not in out
+            assert "axioms:" in out
+            # The standard foundational axioms for core tactics:
+            allowed = {"propext", "Quot.sound", "Classical.choice"}
+            # Extract the axioms line.
+            axioms_line = [ln for ln in out.splitlines() if "axioms" in ln]
+            assert axioms_line
+            line = axioms_line[0]
+            # Every reported axiom must be in the allow-list.
+            # A result like "does not depend on any axioms" is also fine.
+            if "depend" in line and "any" not in line:
+                # e.g. "'abs_like_verified' depends on axioms: [propext, Quot.sound]"
+                inside = line.split("[", 1)[1].rstrip("]").strip() if "[" in line else ""
+                reported = {a.strip() for a in inside.split(",") if a.strip()}
+                assert reported.issubset(allowed), (
+                    f"Unexpected axioms: {reported - allowed}"
+                )
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)

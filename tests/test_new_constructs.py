@@ -315,3 +315,131 @@ class TestSelfProofsExpanded:
     def test_double_bounded_runtime(self) -> None:
         assert double_bounded(3) == 6
         assert double_bounded(5) == 10
+
+
+class TestWhileLoopSoundness:
+    """Regression tests for the pre-0.3.1 vacuous-verify bug.
+
+    Before the obligation-based encoding, a loop requiring more than
+    _MAX_UNROLL (256) iterations would return VERIFIED because the
+    emitted ``Not(cond)`` assumption contradicted the accumulated
+    iteration constraints, discharging ANY postcondition.
+    """
+
+    def test_loop_exceeds_budget_does_not_falsely_verify(self) -> None:
+        def count_up_300(n: int) -> int:
+            i = 0
+            while i < n:
+                i += 1
+            return i
+
+        cert = verify_function(
+            count_up_300,
+            pre=lambda n: (n >= 0) & (n <= 300),
+            post=lambda n, result: result == n,
+        )
+        # 300 > 256 budget; must NOT be VERIFIED.
+        assert cert.status == Status.COUNTEREXAMPLE, cert.status
+
+    def test_unbounded_loop_does_not_falsely_verify(self) -> None:
+        def count_up(n: int) -> int:
+            i = 0
+            while i < n:
+                i += 1
+            return i
+
+        cert = verify_function(
+            count_up,
+            pre=lambda n: n >= 0,  # unbounded
+            post=lambda n, result: result == n,
+        )
+        assert cert.status == Status.COUNTEREXAMPLE, cert.status
+
+    def test_false_spec_in_budget_finds_counterexample(self) -> None:
+        def count_up_10(n: int) -> int:
+            i = 0
+            while i < n:
+                i += 1
+            return i
+
+        cert = verify_function(
+            count_up_10,
+            pre=lambda n: (n >= 0) & (n <= 10),
+            post=lambda n, result: result == 500,  # false
+        )
+        assert cert.status == Status.COUNTEREXAMPLE, cert.status
+        assert cert.counterexample is not None
+
+    def test_true_spec_in_budget_still_verifies(self) -> None:
+        """Ensure the soundness fix didn't break in-budget verification."""
+
+        def count_up_10(n: int) -> int:
+            i = 0
+            while i < n:
+                i += 1
+            return i
+
+        cert = verify_function(
+            count_up_10,
+            pre=lambda n: (n >= 0) & (n <= 10),
+            post=lambda n, result: result == n,
+        )
+        assert cert.verified, cert.message
+
+
+class TestTupleSubscriptSoundness:
+    """Regression tests for the tuple subscript accessor mismatch.
+
+    Before 0.3.1, _subscript emitted ``__tuple_{idx}`` with RealSort,
+    while _tuple_expr bound values under ``__tuple_N_get_i``. The
+    subscript therefore read a distinct uninterpreted function, so
+    Z3 could satisfy the postcondition with any value.
+    """
+
+    def test_tuple_subscript_constrains_by_value(self) -> None:
+        def sum_and_diff(x: float, y: float) -> tuple:
+            return (x + y, x - y)
+
+        cert = verify_function(
+            sum_and_diff,
+            pre=lambda x, y: (x >= 0) & (y >= 0),
+            post=lambda x, y, result: result[0] == x + y,
+        )
+        assert cert.verified, cert.message
+
+    def test_false_tuple_subscript_spec_disproved(self) -> None:
+        def sum_and_diff_bad(x: float, y: float) -> tuple:
+            return (x + y, x - y)
+
+        cert = verify_function(
+            sum_and_diff_bad,
+            pre=lambda x, y: (x >= 0) & (y >= 0),
+            post=lambda x, y, result: result[1] == 999,  # false
+        )
+        assert cert.status == Status.COUNTEREXAMPLE, cert.status
+
+    def test_int_tuple_subscript(self) -> None:
+        def pair_int(n: int) -> tuple:
+            return (n + 1, n - 1)
+
+        cert = verify_function(
+            pair_int,
+            pre=lambda n: n >= 0,
+            post=lambda n, result: result[0] == n + 1,
+        )
+        assert cert.verified, cert.message
+
+    def test_out_of_range_subscript_in_contract_raises(self) -> None:
+        """Postcondition accessing an out-of-range tuple index is an error."""
+
+        def pair_int(n: int) -> tuple:
+            return (n + 1, n - 1)
+
+        cert = verify_function(
+            pair_int,
+            pre=lambda n: n >= 0,
+            post=lambda n, result: result[5] == n,  # out of range
+        )
+        # Out-of-range raises in the proxy; the engine surfaces it as a
+        # translation/postcondition error, NOT as VERIFIED.
+        assert cert.status != Status.VERIFIED
