@@ -1,0 +1,60 @@
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+  /Users/schizodactyl/projects/provably/src/provably/pytest_plugin.py:167: DeprecationWarning: typing.io is deprecated, import directly from typing instead. typing.io will be removed in Python 3.12.
+    obj = getattr(mod, attr)
+
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+tests/test_coverage_targeted.py::TestPytestPluginModulesScan::test_collect_falls_back_to_sys_modules
+  /Users/schizodactyl/projects/provably/src/provably/pytest_plugin.py:167: DeprecationWarning: typing.re is deprecated, import directly from typing instead. typing.re will be removed in Python 3.12.
+    obj = getattr(mod, attr)
+
+tests/test_final_coverage.py::TestDecoratorsLines420_421_RuntimeWrapNParams::test_runtime_checked_on_uninspectable_function
+  /Users/schizodactyl/projects/provably/tests/test_final_coverage.py:1106: UserWarning: pre contract for 'f' takes 1 argument(s), expected 0. The contract may not be called correctly.
+    @runtime_checked(pre=lambda x: x >= 0)
+
+tests/test_integration.py::TestStrictMode::test_strict_raises_on_counterexample
+  /Users/schizodactyl/projects/provably/tests/test_integration.py:114: DeprecationWarning: The 'strict' parameter is deprecated. Use 'raise_on_failure' instead.
+    @verified(strict=True, post=lambda x, result: result > 0)
+
+tests/test_integration.py::TestStrictMode::test_raise_on_failure_alias
+  /Users/schizodactyl/projects/provably/tests/test_integration.py:124: DeprecationWarning: The 'strict' parameter is deprecated. Use 'raise_on_failure' instead.
+    @verified(strict=True, post=lambda x, r: r == x + 2)
+
+tests/test_integration.py::TestStrictMode::test_strict_does_not_raise_on_verified
+  /Users/schizodactyl/projects/provably/tests/test_integration.py:136: DeprecationWarning: The 'strict' parameter is deprecated. Use 'raise_on_failure' instead.
+    @verified(strict=True, post=lambda x, r: r >= 0)
+
+tests/test_pytest_plugin.py::TestProvablyReportFlag::test_provably_report_flag
+tests/test_pytest_plugin.py::TestProvablyReportFlag::test_no_report_without_flag
+tests/test_pytest_plugin.py::TestProvablyReportFlag::test_provably_report_no_verified_functions
+tests/test_pytest_plugin.py::TestProvenMarker::test_proven_marker
+tests/test_pytest_plugin.py::TestProvenMarker::test_provably_flag_filters_to_proven
+tests/test_pytest_plugin.py::TestProvenMarker::test_proven_marker_no_warning
+  /Users/schizodactyl/.pyenv/versions/3.11.12/lib/python3.11/site-packages/pytest_asyncio/plugin.py:252: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+  The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+  
+    warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.11.12-final-0 _______________
+
+Name                            Stmts   Miss Branch BrPart  Cover   Missing
+---------------------------------------------------------------------------
+src/provably/__init__.py            9      0      0      0   100%
+src/provably/_self_proof.py        78      5     18      0    93%   59, 132, 204-207
+src/provably/decorators.py        172      0     72      4    98%   149->exit, 153->exit, 216->220, 321->328
+src/provably/engine.py            391     19    142      6    95%   176->180, 208->210, 317-321, 324, 363-364, 583-586, 630-633, 878, 890, 896
+src/provably/hypothesis.py        194     17     82     12    89%   33-34, 85-87, 118->107, 124, 132-135, 136->107, 169->154, 185->154, 191->194, 194->154, 197->154, 304-305, 311-312, 431, 435, 442
+src/provably/lean4.py             345     25    176     34    88%   47-49, 71, 88, 113, 138, 151-152, 161, 184->189, 185->184, 195, 208->207, 213->201, 229->201, 239->201, 284->291, 288, 289->291, 300->302, 397->405, 441-442, 481-482, 510-511, 532->548, 544->548, 551->549, 553-555, 564->582, 578->582, 592->596, 613, 662-663, 682->690, 687->690, 692->690, 694, 696->705, 702->705, 714->717
+src/provably/pytest_plugin.py      85      7     36      4    91%   81->83, 123-124, 164, 168-169, 190-191, 194->187
+src/provably/translator.py        538     37    324     24    92%   103, 105, 108-110, 128, 139, 166->187, 188->196, 197->209, 557, 592-594, 634->670, 672, 685, 697, 707-708, 718, 724, 790, 795->797, 908-914, 926-928, 935, 960, 1056-1078
+src/provably/types.py              94      0     32      0   100%
+---------------------------------------------------------------------------
+TOTAL                            1906    110    882     84    92%
+================= 641 passed, 1 skipped, 19 warnings in 51.83s =================
