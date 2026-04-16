@@ -589,7 +589,8 @@ def verify_function(
 
     if post is not None:
         try:
-            post_z3 = post(*param_list, ret)
+            post_ret = _maybe_tuple_proxy(ret, result.tuple_meta)
+            post_z3 = post(*param_list, post_ret)
             if isinstance(post_z3, z3.BoolRef):
                 post_parts.append(post_z3)
                 post_strs.append(str(post_z3))
@@ -810,6 +811,61 @@ def _resolve_closure_vars(
             elif isinstance(val, float):
                 closure[name] = z3.RealVal(str(val))
     return closure
+
+
+class _TupleProxy:
+    """Proxy for a tuple-valued Z3 expression used in user contract lambdas.
+
+    The translator encodes a Python tuple as an ``IntSort`` identifier with
+    uninterpreted accessor functions ``__tuple_N_get_i`` bound by axioms.
+    A raw Z3 ``ArithRef`` can't be subscripted in Python, so when a user's
+    ``post=lambda x, y, result: result[0] == x + y`` runs, the lambda would
+    crash with ``'ArithRef' object is not subscriptable``.
+
+    ``_TupleProxy`` wraps the tuple id, knows the tuple's arity and element
+    sorts, and replays ``proxy[i]`` as the correct Z3 accessor application.
+    Only constant integer indices are supported (matching the translator).
+    """
+
+    __slots__ = ("_tuple_id", "_arity", "_elem_sorts")
+
+    def __init__(self, tuple_id: Any, arity: int, elem_sorts: list[Any]) -> None:
+        self._tuple_id = tuple_id
+        self._arity = arity
+        self._elem_sorts = elem_sorts
+
+    def __getitem__(self, idx: int) -> Any:
+        if not isinstance(idx, int):
+            raise TypeError(
+                f"Tuple proxy only supports integer indices, got {type(idx).__name__}"
+            )
+        i = idx + self._arity if idx < 0 else idx
+        if i < 0 or i >= self._arity:
+            raise IndexError(
+                f"Tuple subscript {idx} out of range for {self._arity}-tuple"
+            )
+        accessor = z3.Function(
+            f"__tuple_{self._arity}_get_{i}",
+            z3.IntSort(),
+            self._elem_sorts[i],
+        )
+        return accessor(self._tuple_id)
+
+    def __len__(self) -> int:
+        return self._arity
+
+
+def _maybe_tuple_proxy(
+    ret: Any, tuple_meta: dict[str, tuple[int, list[Any]]]
+) -> Any:
+    """Wrap ``ret`` in a _TupleProxy if it's a known tuple id, else pass through."""
+    if ret is None:
+        return ret
+    meta = tuple_meta.get(str(ret))
+    if meta is None:
+        return ret
+    arity, elem_sorts = meta
+    return _TupleProxy(ret, arity, elem_sorts)
 
 
 def _err(fname: str, source: str, message: str) -> ProofCertificate:

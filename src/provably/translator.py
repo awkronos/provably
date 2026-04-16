@@ -57,6 +57,11 @@ class TranslationResult:
     )  # z3.BoolRef that MUST be proven (callee pres)
     env: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # Maps str(tuple_id_expr) -> (arity, [element_sorts]) for any tuple
+    # value encoded during translation. Used by the engine to build a
+    # _TupleProxy for the postcondition so ``result[i]`` works for tuple
+    # returns without the Z3 ``ArithRef`` choking on Python subscript.
+    tuple_meta: dict[str, tuple[int, list[Any]]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +222,11 @@ class Translator:
         self._constraints: list[Any] = []  # assumptions (callee postconditions, asserts)
         self._obligations: list[Any] = []  # proof obligations (callee preconditions)
         self._warnings: list[str] = []
+        # Tuple metadata for constant-subscript reads. Keys are Z3 tuple id
+        # expressions (str(expr)); values are (arity, [element_sorts]) pairs
+        # so _subscript can build the correct __tuple_N_get_i accessor with
+        # the matching sort. See _tuple_expr / _subscript.
+        self._tuple_meta: dict[str, tuple[int, list[Any]]] = {}
 
     def translate(
         self,
@@ -238,6 +248,7 @@ class Translator:
         self._constraints = []
         self._obligations = []
         self._warnings = []
+        self._tuple_meta = {}
         env = dict(param_vars)
         env, ret = self._block(func_ast.body, env)
         return TranslationResult(
@@ -246,6 +257,7 @@ class Translator:
             obligations=list(self._obligations),
             env=env,
             warnings=list(self._warnings),
+            tuple_meta=dict(self._tuple_meta),
         )
 
     # ------------------------------------------------------------------
@@ -926,6 +938,9 @@ class Translator:
         # Create a unique tuple ID
         tuple_id = z3.Int(f"__tuple_{id(node)}")
 
+        # Record arity and element sorts for _subscript readback.
+        self._tuple_meta[str(tuple_id)] = (n, [elem.sort() for elem in elements])
+
         # Create accessor functions and bind via axioms
         for i, elem in enumerate(elements):
             accessor = z3.Function(
@@ -957,12 +972,34 @@ class Translator:
                 f"Got: {type(idx_node).__name__}"
             )
 
-        # If base is a tuple ID (IntSort), use the accessor function
+        # If base is a tuple ID (IntSort), use the accessor function. We
+        # must match the accessor name and sort created in _tuple_expr,
+        # i.e. __tuple_{N}_get_{i}, or the subscript read will be
+        # disconnected from the tuple write.
         if base.sort() == z3.IntSort():
-            # Try to find the accessor in existing constraints
-            accessor_name = f"__tuple_{idx}"
-            # Generic accessor: returns Real by default
-            accessor = z3.Function(accessor_name, z3.IntSort(), z3.RealSort())
+            meta = self._tuple_meta.get(str(base))
+            if meta is None:
+                # Also handle pass-through: e.g. subscript of a function
+                # call whose postcondition was a tuple. Without metadata,
+                # we cannot know arity or element sort; refuse to guess.
+                raise TranslationError(
+                    f"Subscript on tuple with unknown arity (line {lineno}). "
+                    "Tuple metadata not tracked across function-call "
+                    "boundaries yet."
+                )
+            n, elem_sorts = meta
+            if idx < 0:
+                idx += n  # support negative indexing
+            if idx < 0 or idx >= n:
+                raise TranslationError(
+                    f"Tuple subscript {idx} out of range for {n}-tuple "
+                    f"(line {lineno})"
+                )
+            accessor = z3.Function(
+                f"__tuple_{n}_get_{idx}",
+                z3.IntSort(),
+                elem_sorts[idx],
+            )
             return accessor(base)
 
         raise TranslationError(
