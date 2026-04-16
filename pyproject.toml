@@ -48,6 +48,9 @@ docs = [
     "mkdocs-autorefs>=1.0",
 ]
 
+[project.scripts]
+provably-bench = "scripts.optimal_bench:run"
+
 [project.entry-points."pytest11"]
 provably = "provably.pytest_plugin"
 

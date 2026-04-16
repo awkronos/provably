@@ -211,6 +211,16 @@ lean_code = export_lean4(clamp, output_path="clamp.lean")
 | `CrossHair` | Symbolic execution | Property testing | Test-time |
 | `beartype` | Runtime types | Type checking | Per-call |
 
+## Benchmark
+
+provably's floor is the bare Z3 solve on the same SMT-LIB formula.
+efficiency_pct below 40% means Python/pipeline overhead dominates; above 80% means Z3 is the bottleneck.
+
+```bash
+make bench          # writes /tmp/kagami-provably-bench.json
+# {"efficiency_pct": ..., "actual": ..., "theoretical": ..., "unit": "seconds", "workload": "verify_pipeline_vs_bare_z3"}
+```
+
 ## Links
 
 - [Documentation](https://awkronos.github.io/provably/)

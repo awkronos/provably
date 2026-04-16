@@ -19,3 +19,4 @@ venv/
 .env
 .uv/
 uv.lock
+scripts/_bench_contract.py
