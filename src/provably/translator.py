@@ -467,48 +467,113 @@ class Translator:
         return env
 
     def _do_while(self, stmt: ast.While, env: dict[str, Any]) -> dict[str, Any]:
-        """Unroll a bounded while loop.
+        """Unroll a bounded while loop using a *sound* symbolic encoding.
 
-        Unrolls up to _MAX_UNROLL iterations. At each step, if the condition
-        is statically false (z3.is_false), stops early. Otherwise, unrolls
-        the full budget and adds a constraint that the condition is false
-        at termination.
+        At each iteration i ∈ [0, _MAX_UNROLL), the body is "guarded" by the
+        loop condition: any binding that would be updated in that iteration
+        is wrapped in ``If(active_i, new_val, old_val)``. When the condition
+        becomes statically false, iteration stops early.
 
-        This is SOUND but incomplete: if the loop actually needs more than
-        _MAX_UNROLL iterations, the proof may fail (UNKNOWN/COUNTEREXAMPLE).
+        Soundness of the encoding:
+          Let B_i be the loop condition evaluated in the environment just
+          BEFORE iteration i. The active flag for iteration i is
+          ``active_i ≡ B_0 ∧ B_1 ∧ … ∧ B_i`` (all previous iterations and
+          this one must have been taken). For the final environment to
+          represent a correct terminal state, we must prove the loop has
+          terminated within the unroll budget. We do this by raising a
+          PROOF OBLIGATION: ``¬ active_{_MAX_UNROLL}``. If the caller's
+          pre/refinement constraints force more iterations than the budget,
+          the obligation fails and verification returns COUNTEREXAMPLE or
+          UNKNOWN — never a false VERIFIED.
+
+        This closes a soundness hole present in earlier revisions where a
+        loop that ran past the unroll budget was silently "terminated" by
+        asserting ``Not(cond)`` as an assumption, which combined with the
+        still-accumulated iteration constraints could be contradictory and
+        vacuously discharge ANY postcondition.
         """
         lineno = getattr(stmt, "lineno", "?")
 
         if stmt.orelse:
             self._warnings.append(f"While-loop else clause ignored (line {lineno})")
 
+        # Running conjunction of "every previous iteration's condition held"
+        active: Any = z3.BoolVal(True)
+
         for iteration in range(_MAX_UNROLL):
-            cond = self._expr(stmt.test, env)
+            cond_i = self._expr(stmt.test, env)
 
-            # Static check: if condition is provably false, exit early
-            if z3.is_false(cond):
-                break
+            # Short-circuit when statically false with no outstanding activity
+            if z3.is_false(cond_i) or (
+                z3.is_true(active) and z3.is_false(cond_i)
+            ):
+                return env
 
-            # Add condition as assumption for this iteration
-            self._constraints.append(cond)
+            new_active = z3.simplify(z3.And(active, cond_i))
+            pre_iter_env = env
 
-            env, ret = self._block(stmt.body, env)
+            body_env, ret = self._block(stmt.body, dict(env))
             if ret is not None:
+                # Early return inside the loop — merge guarded
                 self._warnings.append(
                     f"Early return inside while-loop at iteration {iteration}"
                     f" (line {lineno}); remaining iterations skipped"
                 )
-                break
-        else:
-            # Hit MAX_UNROLL — add constraint that loop terminated
-            final_cond = self._expr(stmt.test, env)
-            self._constraints.append(z3.Not(final_cond))
-            self._warnings.append(
-                f"While-loop unrolled {_MAX_UNROLL} iterations (line {lineno}); "
-                f"termination assumed via added constraint"
-            )
+                # Guard the body-returned value: only meaningful when active.
+                # We conservatively do NOT propagate the early return out of
+                # the loop — current limitation, same as for-loop.
+                env = self._merge_guarded(new_active, pre_iter_env, body_env)
+                return env
+
+            env = self._merge_guarded(new_active, pre_iter_env, body_env)
+            active = new_active
+
+            # If `active` is now statically false, no further iteration runs.
+            if z3.is_false(active):
+                return env
+
+        # Budget exhausted. Add a PROOF OBLIGATION that the loop actually
+        # terminated within the budget — i.e. the condition is false now.
+        # This becomes part of the postcondition set; if it can't be proved,
+        # verification will return COUNTEREXAMPLE or UNKNOWN (never falsely
+        # VERIFIED). The obligation is guarded by `active`: if the loop
+        # already exited early on some path, the obligation is trivially OK.
+        final_cond = self._expr(stmt.test, env)
+        termination_ob = z3.Implies(active, z3.Not(final_cond))
+        self._obligations.append(termination_ob)
+        self._warnings.append(
+            f"While-loop unrolled {_MAX_UNROLL} iterations (line {lineno}); "
+            "termination added as proof obligation"
+        )
 
         return env
+
+    def _merge_guarded(
+        self,
+        active: Any,
+        old_env: dict[str, Any],
+        body_env: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Merge ``body_env`` into ``old_env`` guarded by ``active``.
+
+        For each name, the new value is ``If(active, body_val, old_val)``.
+        Pure bookkeeping; does not mutate either input.
+        """
+        merged = dict(old_env)
+        for key in set(old_env) | set(body_env):
+            old_val = old_env.get(key)
+            body_val = body_env.get(key)
+            if old_val is None:
+                # New binding inside body — only exists when active
+                if body_val is not None:
+                    merged[key] = body_val
+                continue
+            if body_val is None or body_val is old_val:
+                merged[key] = old_val
+                continue
+            a, b = self._coerce(body_val, old_val)
+            merged[key] = z3.If(active, a, b)
+        return merged
 
     def _do_match(
         self,

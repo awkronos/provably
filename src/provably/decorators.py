@@ -234,7 +234,7 @@ def verified(
             fn, pre, post, raise_on_failure, timeout_ms, contracts, check_contracts
         )
 
-    return decorator  # type: ignore[return-value]
+    return decorator
 
 
 def _verify_and_wrap(
@@ -262,7 +262,7 @@ def _verify_and_wrap(
         logger.debug("SKIPPED (async) %s", fname)
 
         @functools.wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await func(*args, **kwargs)
 
         async_wrapper.__proof__ = cert  # type: ignore[attr-defined]
@@ -405,7 +405,7 @@ def runtime_checked(
     def decorator(fn: F) -> F:
         return _runtime_wrap(fn, pre, post, raise_on_failure)
 
-    return decorator  # type: ignore[return-value]
+    return decorator
 
 
 def _runtime_wrap(
@@ -429,7 +429,7 @@ def _runtime_wrap(
     if inspect.iscoroutinefunction(func):
 
         @functools.wraps(func)
-        async def async_checked_wrapper(*args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+        async def async_checked_wrapper(*args: Any, **kwargs: Any) -> Any:
             if pre is not None:
                 try:
                     ok = pre(*args)
