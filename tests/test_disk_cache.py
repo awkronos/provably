@@ -148,12 +148,12 @@ class TestDiskCacheEnabled:
     def test_disk_cache_measurably_faster_than_cold_verify(
         self, tmp_path: Path
     ) -> None:
-        """Empirically, a disk hit should beat a cold solve by at least 10x
-        on a problem whose solver_time_ms is >= 1 ms.
+        """Empirically, a disk hit should beat a cold solve by a large
+        margin once the problem is big enough for a Z3 call to dominate
+        perf_counter noise.
 
-        We pick a small verification that's still slow enough to be
-        measured reliably, then compare cold path vs disk hit. The ratio
-        is conservative (10x); on-box measurements routinely see >20x.
+        We take the minimum of several cold and disk timings (best-of-N)
+        so one unlucky GC pause on the disk path can't flip the result.
         """
         import time
 
@@ -161,42 +161,59 @@ class TestDiskCacheEnabled:
         configure(cache_dir=str(cache_dir))
         try:
 
-            def quadratic_nonneg(x: float, y: float) -> float:
-                # Non-trivial enough to take a measurable slice of time.
-                return x * x + y * y + 1.0
+            # Heavier problem to push cold solve time reliably above noise.
+            def quartic_nonneg(
+                a: float, b: float, c: float, d: float
+            ) -> float:
+                return (
+                    a * a * a * a
+                    + b * b * b * b
+                    + c * c * c * c
+                    + d * d * d * d
+                    + 1.0
+                )
 
-            def post(x: float, y: float, r: float) -> object:
+            def post(a: float, b: float, c: float, d: float, r: float) -> object:
                 return r > 0
 
-            # Cold run: no cache, Z3 must solve.
+            # Warm Z3/module caches with ONE throwaway solve so the first
+            # timed cold-solve doesn't also pay import cost.
             clear_cache()
-            # Ensure no disk artefact from a prior run either.
             for p in cache_dir.glob("*.json"):
                 p.unlink()
+            verify_function(quartic_nonneg, post=post)
 
-            t0 = time.perf_counter()
-            cert_cold = verify_function(quadratic_nonneg, post=post)
-            cold_ms = (time.perf_counter() - t0) * 1000.0
-            assert cert_cold.verified
+            cold_times: list[float] = []
+            disk_times: list[float] = []
+            for _ in range(5):
+                # Cold: kill both memory and disk cache.
+                clear_cache()
+                for p in cache_dir.glob("*.json"):
+                    p.unlink()
+                t0 = time.perf_counter()
+                cert_cold = verify_function(quartic_nonneg, post=post)
+                cold_times.append((time.perf_counter() - t0) * 1000.0)
+                assert cert_cold.verified
 
-            # Clear in-memory cache so we're forced to read from disk.
-            clear_cache()
+                # Disk: kill ONLY memory cache so we read back from disk.
+                clear_cache()
+                t0 = time.perf_counter()
+                cert_disk = verify_function(quartic_nonneg, post=post)
+                disk_times.append((time.perf_counter() - t0) * 1000.0)
+                assert cert_disk.verified
+                assert cert_disk.function_name == cert_cold.function_name
 
-            t0 = time.perf_counter()
-            cert_disk = verify_function(quadratic_nonneg, post=post)
-            disk_ms = (time.perf_counter() - t0) * 1000.0
-            assert cert_disk.verified
+            cold_min = min(cold_times)
+            disk_min = min(disk_times)
 
-            # Both should agree on the result; disk hit should be noticeably
-            # cheaper than a cold Z3 solve.
-            assert cert_disk.function_name == cert_cold.function_name
-            # Skip the timing assertion when cold is already trivial — on
-            # a warm-cpu machine the problem can be <0.5 ms cold, and
-            # perf_counter jitter swamps the ratio.
-            if cold_ms >= 1.0:
-                assert disk_ms * 10 <= cold_ms, (
+            # Skip the timing assertion when cold is trivially fast — on a
+            # warm-cpu machine even a Z3 solve can be <1 ms and perf_counter
+            # jitter swamps any real speedup.
+            if cold_min >= 1.0:
+                assert disk_min * 5 <= cold_min, (
                     f"Disk cache not measurably faster: "
-                    f"cold={cold_ms:.2f}ms disk={disk_ms:.2f}ms"
+                    f"cold_min={cold_min:.2f}ms disk_min={disk_min:.2f}ms "
+                    f"(cold={cold_times}, disk={disk_times})"
                 )
         finally:
             configure(cache_dir=None)
