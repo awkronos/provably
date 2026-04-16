@@ -1250,9 +1250,19 @@ class TestTypesLines240_248_ExtractRefinements:
         constraints = extract_refinements(typ, x)
         assert len(constraints) == 1
 
-    def test_extract_refinements_callable_returns_non_boolref(self) -> None:
-        """Callable marker returning non-BoolRef is silently skipped."""
+    def test_extract_refinements_callable_returns_non_boolref_raises(
+        self,
+    ) -> None:
+        """Callable marker returning non-BoolRef raises RefinementError.
+
+        Soundness: silently dropping a non-BoolRef return would weaken the
+        precondition below what the user asked for.
+        """
         from typing import Annotated
+
+        import pytest
+
+        from provably.types import RefinementError
 
         x = z3.Real("x")
 
@@ -1260,12 +1270,22 @@ class TestTypesLines240_248_ExtractRefinements:
             return 42  # not a BoolRef
 
         typ = Annotated[float, non_bool_marker]
-        constraints = extract_refinements(typ, x)
-        assert len(constraints) == 0
+        with pytest.raises(RefinementError):
+            extract_refinements(typ, x)
 
-    def test_extract_refinements_callable_raises_skipped(self) -> None:
-        """Callable marker that raises TypeError is silently skipped."""
+    def test_extract_refinements_callable_raises_surfaced(self) -> None:
+        """Callable marker that raises is re-raised as RefinementError.
+
+        Soundness: an earlier revision silently skipped such markers. A
+        predicate that was supposed to enforce x > 100 but happened to
+        raise would leave the precondition unconstrained, converting a
+        genuine counterexample into a false VERIFIED result downstream.
+        """
         from typing import Annotated
+
+        import pytest
+
+        from provably.types import RefinementError
 
         x = z3.Real("x")
 
@@ -1273,8 +1293,8 @@ class TestTypesLines240_248_ExtractRefinements:
             raise TypeError("bad")
 
         typ = Annotated[float, bad_marker]
-        constraints = extract_refinements(typ, x)
-        assert len(constraints) == 0
+        with pytest.raises(RefinementError):
+            extract_refinements(typ, x)
 
     def test_extract_refinements_bare_type_marker_skipped(self) -> None:
         """A bare type like `float` as a marker is not applied (isinstance(marker, type) guard)."""

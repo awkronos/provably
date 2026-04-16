@@ -24,6 +24,16 @@ import z3
 HAS_Z3 = True  # z3-solver is a hard dependency
 
 
+class RefinementError(TypeError):
+    """Raised when a refinement predicate fails to produce a Z3 constraint.
+
+    Silently dropping a broken refinement would weaken the precondition
+    below what the caller asked for — that is a soundness regression,
+    not an edge case. We raise instead, which surfaces as
+    ``TRANSLATION_ERROR`` on the proof certificate.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Python type → Z3 sort
 # ---------------------------------------------------------------------------
@@ -236,13 +246,33 @@ def extract_refinements(typ: type, var: Any) -> list[Any]:
             # Nested Annotated type (e.g., Positive = Annotated[float, Gt(0)])
             constraints.extend(extract_refinements(marker, var))
         elif callable(marker) and not isinstance(marker, type):
-            # Custom predicate callable (but not a bare type like float/int)
+            # Custom predicate callable (but not a bare type like float/int).
+            #
+            # Soundness rule (2026-04-16): if the predicate raises or returns
+            # a non-BoolRef, we MUST NOT silently drop the refinement — doing
+            # so weakens the effective precondition below what the user asked
+            # for, which can turn a counterexample into a false VERIFIED.
+            # Instead, we raise RefinementError so the caller surfaces
+            # TRANSLATION_ERROR on the certificate. Tests and docs prefer
+            # explicit subclasses of our own refinement markers (Gt/Ge/Lt/Le/
+            # Between/NotEq) which never reach this branch.
             try:
                 result = marker(var)
-                if isinstance(result, z3.BoolRef):
-                    constraints.append(result)
-            except (TypeError, Exception):
-                pass  # Not a valid constraint callable
+            except Exception as exc:  # noqa: BLE001 — re-raised as RefinementError
+                raise RefinementError(
+                    f"Refinement predicate {marker!r} raised "
+                    f"{type(exc).__name__}: {exc}. Silently dropping the "
+                    "refinement would weaken the precondition; refusing."
+                ) from exc
+            if isinstance(result, z3.BoolRef):
+                constraints.append(result)
+            else:
+                raise RefinementError(
+                    f"Refinement predicate {marker!r} returned "
+                    f"{type(result).__name__}, expected z3.BoolRef. Silently "
+                    "dropping the refinement would weaken the precondition; "
+                    "refusing."
+                )
     return constraints
 
 

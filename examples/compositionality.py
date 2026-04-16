@@ -19,8 +19,7 @@ import z3
 
 from provably import verified
 from provably.engine import verify_function
-from provably.types import Between, Ge, Le
-
+from provably.types import Between
 
 # ---------------------------------------------------------------------------
 # 1. Build a verified library of primitives
@@ -72,7 +71,7 @@ print()
 print("=== 2. __contract__ attribute ===")
 
 c = safe_half.__contract__
-print(f"safe_half.__contract__:")
+print("safe_half.__contract__:")
 print(f"  verified: {c['verified']}")
 print(f"  pre:      {c['pre']}")
 print(f"  post:     {c['post']}")
@@ -167,7 +166,7 @@ module_namespace = {
 
 results = verify_module(module_namespace)
 all_proven = all(results.values())
-print(f"Module proof results:")
+print("Module proof results:")
 for name, proven in results.items():
     sym = "Q.E.D." if proven else "FAIL"
     print(f"  {sym:8s}  {name}")
@@ -196,7 +195,7 @@ cert_bad = verify_function(
 print(f"bad_quarter (no contract): {cert_bad.status.value}")
 if cert_bad.status.value == "translation_error":
     print(f"  Error: {cert_bad.message}")
-print(f"  (Expected TRANSLATION_ERROR — 'safe_half' unknown to verifier)")
+print("  (Expected TRANSLATION_ERROR — 'safe_half' unknown to verifier)")
 print()
 
 

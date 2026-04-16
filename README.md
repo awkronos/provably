@@ -1,15 +1,20 @@
-# provably
+<div align="center">
+  <img src="docs/logo.png" alt="provably" width="180" />
 
-**Z3-backed formal verification for Python -- via decorators and refinement types**
+  # provably
 
-[![PyPI](https://img.shields.io/pypi/v/provably)](https://pypi.org/project/provably/)
-[![Python](https://img.shields.io/pypi/pyversions/provably)](https://pypi.org/project/provably/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/awkronos/provably/blob/main/LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/awkronos/provably/ci.yml?label=CI)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
-[![Typed](https://img.shields.io/badge/types-mypy%20strict-blue)](https://github.com/awkronos/provably)
-[![Docs](https://img.shields.io/badge/docs-awkronos.github.io-blue)](https://awkronos.github.io/provably/)
+  **Z3-backed formal verification for Python — via decorators and refinement types.**
 
----
+  _An [awkronos](https://awkronos.com) library. The Python sibling of [`provably`](https://crates.io/crates/provably) for Rust._
+
+  [![PyPI](https://img.shields.io/pypi/v/provably?color=D97706)](https://pypi.org/project/provably/)
+  [![Python](https://img.shields.io/pypi/pyversions/provably?color=1E1B4B)](https://pypi.org/project/provably/)
+  [![CI](https://img.shields.io/github/actions/workflow/status/awkronos/provably/ci.yml?branch=main&logo=github)](https://github.com/awkronos/provably/actions/workflows/ci.yml)
+  [![license](https://img.shields.io/pypi/l/provably?color=1E1B4B)](https://github.com/awkronos/provably/blob/main/LICENSE)
+  [![typed](https://img.shields.io/badge/types-mypy%20strict-1E1B4B)](https://github.com/awkronos/provably)
+  [![awkronos](https://img.shields.io/badge/awkronos-library-1E1B4B?labelColor=FAFAF8)](https://awkronos.com)
+  [![docs](https://img.shields.io/badge/docs-awkronos.github.io-1E1B4B)](https://awkronos.github.io/provably/)
+</div>
 
 ```python
 from provably import verified
@@ -120,8 +125,6 @@ triangle.__proof__.verified  # True
 
 ### Walrus operator
 
-The walrus operator (`:=`) is supported for inline assignments:
-
 ```python
 @verified(
     post=lambda x, result: (result >= 0) & ((result == x) | (result == -x)),
@@ -153,8 +156,6 @@ dispatch.__proof__.verified  # True
 
 ### Tuple returns
 
-Functions can return tuples. Each element is accessible via constant subscript:
-
 ```python
 @verified(
     post=lambda x, y, result: result >= 0,
@@ -163,18 +164,16 @@ def sum_and_diff(x: float, y: float) -> tuple:
     return (x + y, x - y)
 ```
 
-### Lean4 backend
+### Lean 4 backend
 
 Cross-check Z3 results with an independent proof assistant:
 
 ```python
 from provably import verify_with_lean4, export_lean4
 
-# Verify with Lean4 type checker (requires Lean4 installed)
 cert = verify_with_lean4(clamp, pre=lambda v, lo, hi: lo <= hi,
                          post=lambda v, lo, hi, r: (r >= lo) & (r <= hi))
 
-# Export as .lean theorem file
 lean_code = export_lean4(clamp, output_path="clamp.lean")
 ```
 
@@ -197,7 +196,7 @@ lean_code = export_lean4(clamp, output_path="clamp.lean")
 | `while` loops (bounded, max 256 iterations) | Yes (unrolled) |
 | `for i in range(N)` (literal N, max 256) | Yes (unrolled) |
 | `assert` statements | Yes (become proof obligations) |
-| Lean4 backend (`verify_with_lean4`) | Yes (requires Lean4) |
+| Lean 4 backend (`verify_with_lean4`) | Yes (requires Lean 4) |
 | Recursion | No |
 | `str`, `list`, `dict` | No |
 | Unbounded loops, generators, async | No |
@@ -219,4 +218,15 @@ lean_code = export_lean4(clamp, output_path="clamp.lean")
 - [How it works](https://awkronos.github.io/provably/concepts/how-it-works/)
 - [Self-proof](https://awkronos.github.io/provably/self-proof/)
 - [API reference](https://awkronos.github.io/provably/api/decorators/)
-- [Changelog](CHANGELOG.md) | [License](LICENSE) (MIT)
+- [Changelog](CHANGELOG.md) · [License](LICENSE) (MIT)
+
+---
+
+<div align="center">
+
+**awkronos** — a small penguin with snow on its head.
+We prove the math you've been meaning to do.
+
+[awkronos.com](https://awkronos.com) · [essays](https://tim.awkronos.com)
+
+</div>

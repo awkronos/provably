@@ -145,9 +145,7 @@ class TestDiskCacheEnabled:
         finally:
             configure(cache_dir=None)
 
-    def test_disk_cache_measurably_faster_than_cold_verify(
-        self, tmp_path: Path
-    ) -> None:
+    def test_disk_cache_measurably_faster_than_cold_verify(self, tmp_path: Path) -> None:
         """Empirically, a disk hit should beat a cold solve by a large
         margin once the problem is big enough for a Z3 call to dominate
         perf_counter noise.
@@ -160,18 +158,9 @@ class TestDiskCacheEnabled:
         cache_dir = tmp_path / "cache"
         configure(cache_dir=str(cache_dir))
         try:
-
             # Heavier problem to push cold solve time reliably above noise.
-            def quartic_nonneg(
-                a: float, b: float, c: float, d: float
-            ) -> float:
-                return (
-                    a * a * a * a
-                    + b * b * b * b
-                    + c * c * c * c
-                    + d * d * d * d
-                    + 1.0
-                )
+            def quartic_nonneg(a: float, b: float, c: float, d: float) -> float:
+                return a * a * a * a + b * b * b * b + c * c * c * c + d * d * d * d + 1.0
 
             def post(a: float, b: float, c: float, d: float, r: float) -> object:
                 return r > 0

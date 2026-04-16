@@ -15,8 +15,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from provably import verified
-from provably.types import Ge, Le, Gt, Lt, Between, NotEq
-
+from provably.types import Between, Ge, Gt, Le
 
 # ---------------------------------------------------------------------------
 # 1. Basic bounds — Ge, Le
@@ -180,7 +179,7 @@ print()
 print("=== 7. Convenience aliases ===")
 
 try:
-    from provably.types import Positive, NonNegative, UnitInterval  # type: ignore[attr-defined]
+    from provably.types import NonNegative, Positive, UnitInterval  # type: ignore[attr-defined]
 
     @verified
     def scale_positive(x: Annotated[float, Positive]) -> Annotated[float, Positive]:

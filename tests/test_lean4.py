@@ -268,8 +268,6 @@ class TestLean4CoreMode:
                 # e.g. "'abs_like_verified' depends on axioms: [propext, Quot.sound]"
                 inside = line.split("[", 1)[1].rstrip("]").strip() if "[" in line else ""
                 reported = {a.strip() for a in inside.split(",") if a.strip()}
-                assert reported.issubset(allowed), (
-                    f"Unexpected axioms: {reported - allowed}"
-                )
+                assert reported.issubset(allowed), f"Unexpected axioms: {reported - allowed}"
         finally:
             Path(tmp_path).unlink(missing_ok=True)

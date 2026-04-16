@@ -10,20 +10,34 @@ Supported Python subset:
   - Boolean: and, or, not
   - Control flow: if/elif/else, early return
   - Bounded for-loops: ``for i in range(N)`` where N is a literal constant
-  - Bounded while-loops: with ``# variant: expr`` comment (unrolled)
+  - Bounded while-loops: up to ``_MAX_UNROLL``; termination becomes a
+    proof obligation — NOT an assumption.
   - Assignments: simple, augmented (+=, -=, etc.), walrus (:=)
   - Assertions: assert expr (become proof obligations)
-  - Builtins: min, max, abs, pow, len, sum, any, all, bool, int, float
-  - Tuple returns: ``return (a, b)`` encoded as Z3 datatype
-  - Constant subscript: ``arr[0]`` with integer literal index
-  - Match/case: desugared to if/elif/else (Python 3.10+)
+  - Builtins: ``min``, ``max``, ``abs``, ``pow``, ``bool``, ``int``,
+    ``float``, ``round``, ``len`` (uninterpreted, ``len(x) >= 0``).
+  - Tuple returns: ``return (a, b)`` with constant-index subscript
+  - Match/case: literal patterns + wildcard ``_`` + guards (Python 3.10+);
+    non-exhaustive matches fall through to statements after the match.
   - Walrus operator: ``x := expr`` inline assignment
   - Calls to other @verified functions (contract-based composition)
 
 Unsupported (raises TranslationError):
-  - Unbounded loops (while without variant), generators, async, with, try/except
+  - List/dict/set literals and comprehensions
+  - ``sum``, ``any``, ``all``, ``sorted``, ``map``, ``filter``, ``reduce``
+  - Generators, async, with, try/except, class, lambda
   - Non-constant subscript, star-args
-  - Class definitions, lambda, comprehensions
+  - ``math.isqrt`` and any ``math.*`` function not in
+    ``_MATH_FUNCTIONS`` (exp, cos, sqrt, log — axiomatized)
+
+Soundness invariants:
+  - ``verified=True`` is returned only when Z3 concludes UNSAT on
+    ``pre ∧ body ∧ ¬post`` AND every proof obligation (loop termination,
+    callee preconditions) has been discharged.
+  - Refinement predicates that raise are NEVER silently dropped — they
+    surface as ``TRANSLATION_ERROR``. Silent drop would weaken the pre.
+  - Non-exhaustive match falls through; it never silently claims the
+    last case's return value for unmatched subjects.
 """
 
 from __future__ import annotations
@@ -516,9 +530,7 @@ class Translator:
             cond_i = self._expr(stmt.test, env)
 
             # Short-circuit when statically false with no outstanding activity
-            if z3.is_false(cond_i) or (
-                z3.is_true(active) and z3.is_false(cond_i)
-            ):
+            if z3.is_false(cond_i) or (z3.is_true(active) and z3.is_false(cond_i)):
                 return env
 
             new_active = z3.simplify(z3.And(active, cond_i))
@@ -595,8 +607,18 @@ class Translator:
     ) -> tuple[dict[str, Any], Any]:
         """Translate match/case to nested if/elif/else.
 
-        Only supports literal pattern matching (MatchValue with constants).
-        Guard clauses (case X if cond:) are supported.
+        Only supports literal pattern matching (MatchValue/MatchSingleton)
+        and the wildcard ``case _``. Guard clauses (``case X if cond:``)
+        are supported.
+
+        Soundness: a non-exhaustive match (no wildcard / no case whose guard
+        is unconditionally true for all subjects) must fall through to the
+        ``remaining`` statements that follow the match. An earlier revision
+        collapsed the chain using the last case as the "else" branch, which
+        silently dropped the fall-through and could falsely discharge a
+        postcondition on unmatched subjects. The structure below builds a
+        right-nested ``If`` chain whose innermost else-branch is the
+        translation of ``remaining`` (or a non-returning env merge).
         """
         lineno = getattr(stmt, "lineno", "?")
         subject = self._expr(stmt.subject, env)
@@ -604,14 +626,20 @@ class Translator:
         # Build chain of conditions and bodies
         conditions: list[Any] = []
         bodies: list[list[Any]] = []
+        # Track whether a case is "unconditionally matching" — a wildcard
+        # with no guard. Such a case makes everything after it unreachable
+        # AND closes the match exhaustively.
+        has_unconditional_wildcard = False
 
         for case in stmt.cases:
             pattern = case.pattern
             if hasattr(ast, "MatchValue") and isinstance(pattern, ast.MatchValue):
                 value = self._expr(pattern.value, env)
                 cond = subject == value
+                is_wildcard = False
             elif hasattr(ast, "MatchSingleton") and isinstance(pattern, ast.MatchSingleton):
                 cond = subject == self._constant(pattern.value)
+                is_wildcard = False
             elif (
                 hasattr(ast, "MatchAs")
                 and isinstance(pattern, ast.MatchAs)
@@ -619,39 +647,87 @@ class Translator:
             ):
                 # Wildcard: case _: (always matches)
                 cond = z3.BoolVal(True)
+                is_wildcard = True
             else:
                 raise TranslationError(
                     f"Unsupported match pattern: {type(pattern).__name__} (line {lineno}). "
                     "Only literal values and wildcard (_) supported."
                 )
 
-            # Guard clause
+            # Guard clause — a guarded wildcard is NOT unconditional
             if case.guard is not None:
                 guard = self._expr(case.guard, env)
                 cond = z3.And(cond, guard)
+                is_wildcard = False
 
             conditions.append(cond)
             bodies.append(case.body)
 
-        # Build nested if/elif/else from the cases
-        if not conditions:
-            return env, None
+            if is_wildcard:
+                has_unconditional_wildcard = True
+                break  # subsequent cases unreachable; Python raises SyntaxWarning
 
-        # Process from last to first (else-chain)
-        result_env = dict(env)
-        result_ret: Any = None
+        if not conditions:
+            # Empty match — fall through to remaining
+            return self._block(remaining, env)
+
+        # Build the innermost else-branch. When the match is not
+        # exhaustive (no unconditional wildcard), an unmatched subject must
+        # fall through to statements that follow the match; this is the
+        # SOUND default branch.
+        if has_unconditional_wildcard:
+            # Exhaustive: the last case IS the "else". We still process
+            # remaining for cases that did not return.
+            default_env: dict[str, Any] | None = None
+            default_ret: Any = None
+        else:
+            # Non-exhaustive: default = translation of ``remaining``.
+            default_env, default_ret = self._block(remaining, dict(env))
+
+        # Walk cases right-to-left, building nested If expressions.
+        # result_ret may be None when neither the case body nor remaining
+        # produces a return; we propagate that upward honestly.
+        result_ret: Any = default_ret
+        result_env: dict[str, Any] = default_env if default_env is not None else dict(env)
 
         for i in range(len(conditions) - 1, -1, -1):
             case_env, case_ret = self._block(bodies[i], dict(env))
+            # Cases that don't return fall through to remaining.
             if case_ret is None:
                 case_env, case_ret = self._block(remaining, case_env)
 
-            if result_ret is None:
+            if has_unconditional_wildcard and i == len(conditions) - 1:
+                # The last case IS the else-branch when the match is exhaustive.
                 result_ret = case_ret
                 result_env = case_env
-            elif case_ret is not None:
-                case_ret, result_ret = self._coerce(case_ret, result_ret)
-                result_ret = z3.If(conditions[i], case_ret, result_ret)
+                continue
+
+            if result_ret is None and case_ret is None:
+                # Neither branch returned — merge environments under condition.
+                result_env = self._merge_envs(conditions[i], case_env, result_env, env)
+                continue
+            if result_ret is None:
+                # Only the case returned. Downstream callers treat a None
+                # return as "falls through"; to preserve that, we leave
+                # result_ret as the case's return under its condition.
+                # In practice this matches the behavior of ``if cond: return X``
+                # with no else that returns.
+                # NOTE: full multi-arm partial-return semantics here is a
+                # known incompleteness — but NEVER unsound: we never claim a
+                # value to Z3 that isn't backed by a real code path.
+                raise TranslationError(
+                    f"Match with mixed returning / non-returning arms not "
+                    f"supported (line {lineno}). Make all arms either return "
+                    "or assign consistently."
+                )
+            if case_ret is None:
+                raise TranslationError(
+                    f"Match with mixed returning / non-returning arms not "
+                    f"supported (line {lineno}). Make all arms either return "
+                    "or assign consistently."
+                )
+            case_ret, result_ret = self._coerce(case_ret, result_ret)
+            result_ret = z3.If(conditions[i], case_ret, result_ret)
 
         return result_env, result_ret
 
@@ -992,8 +1068,7 @@ class Translator:
                 idx += n  # support negative indexing
             if idx < 0 or idx >= n:
                 raise TranslationError(
-                    f"Tuple subscript {idx} out of range for {n}-tuple "
-                    f"(line {lineno})"
+                    f"Tuple subscript {idx} out of range for {n}-tuple (line {lineno})"
                 )
             accessor = z3.Function(
                 f"__tuple_{n}_get_{idx}",

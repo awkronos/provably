@@ -566,13 +566,24 @@ def verify_function(
             _proof_cache[cache_key] = cert
             return cert
 
-    # 2. Add refinement type constraints from annotations
-    for name, var in param_vars.items():
-        typ = hints.get(name)
-        if typ is not None:
-            for constraint in extract_refinements(typ, var):
-                s.add(constraint)
-                pre_strs.append(str(constraint))
+    # 2. Add refinement type constraints from annotations.
+    #
+    # A broken refinement predicate raises RefinementError (see
+    # types.extract_refinements). Propagating as TRANSLATION_ERROR is
+    # critical for soundness: silently dropping the refinement would
+    # weaken the precondition below what the caller asked for, which
+    # can turn a counterexample into a false VERIFIED.
+    try:
+        for name, var in param_vars.items():
+            typ = hints.get(name)
+            if typ is not None:
+                for constraint in extract_refinements(typ, var):
+                    s.add(constraint)
+                    pre_strs.append(str(constraint))
+    except TypeError as e:
+        cert = _err(fname, source, f"Refinement error: {e}")
+        _proof_cache[cache_key] = cert
+        return cert
 
     # 3. Add body constraints (assumptions: callee postconditions, asserts)
     for c in result.constraints:
@@ -607,12 +618,19 @@ def verify_function(
             _proof_cache[cache_key] = cert
             return cert
 
-    # Return type refinements
+    # Return type refinements. RefinementError is re-raised here for the
+    # same reason as parameter refinements above: a broken predicate must
+    # NOT silently weaken the postcondition.
     ret_typ = hints.get("return")
     if ret_typ is not None:
-        for constraint in extract_refinements(ret_typ, ret):
-            post_parts.append(constraint)
-            post_strs.append(str(constraint))
+        try:
+            for constraint in extract_refinements(ret_typ, ret):
+                post_parts.append(constraint)
+                post_strs.append(str(constraint))
+        except TypeError as e:
+            cert = _err(fname, source, f"Return refinement error: {e}")
+            _proof_cache[cache_key] = cert
+            return cert
 
     # Add caller obligations (callee preconditions) to postcondition set
     for ob in caller_obligations:
@@ -857,14 +875,10 @@ class _TupleProxy:
 
     def __getitem__(self, idx: int) -> Any:
         if not isinstance(idx, int):
-            raise TypeError(
-                f"Tuple proxy only supports integer indices, got {type(idx).__name__}"
-            )
+            raise TypeError(f"Tuple proxy only supports integer indices, got {type(idx).__name__}")
         i = idx + self._arity if idx < 0 else idx
         if i < 0 or i >= self._arity:
-            raise IndexError(
-                f"Tuple subscript {idx} out of range for {self._arity}-tuple"
-            )
+            raise IndexError(f"Tuple subscript {idx} out of range for {self._arity}-tuple")
         accessor = z3.Function(
             f"__tuple_{self._arity}_get_{i}",
             z3.IntSort(),
@@ -876,9 +890,7 @@ class _TupleProxy:
         return self._arity
 
 
-def _maybe_tuple_proxy(
-    ret: Any, tuple_meta: dict[str, tuple[int, list[Any]]]
-) -> Any:
+def _maybe_tuple_proxy(ret: Any, tuple_meta: dict[str, tuple[int, list[Any]]]) -> Any:
     """Wrap ``ret`` in a _TupleProxy if it's a known tuple id, else pass through."""
     if ret is None:
         return ret

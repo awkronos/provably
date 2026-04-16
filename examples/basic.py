@@ -9,13 +9,13 @@ Demonstrates:
 
 from __future__ import annotations
 
-from provably import verified, VerificationError, Status
+from provably import VerificationError, verified
 from provably.engine import verify_function
-
 
 # ---------------------------------------------------------------------------
 # 1. A function with a correct postcondition — proof succeeds
 # ---------------------------------------------------------------------------
+
 
 @verified(post=lambda x, result: result >= 0)
 def safe_abs(x: float) -> float:
@@ -40,6 +40,7 @@ print()
 # 2. A function with a wrong postcondition — counterexample returned
 # ---------------------------------------------------------------------------
 
+
 @verified(post=lambda x, result: result > 0)
 def negate(x: float) -> float:
     """Negate x. The postcondition 'result > 0' is WRONG."""
@@ -61,6 +62,7 @@ print()
 # ---------------------------------------------------------------------------
 # 3. Accessing the certificate via verify_function (no decorator)
 # ---------------------------------------------------------------------------
+
 
 def clamp(val: float, lo: float, hi: float) -> float:
     """Clamp val to [lo, hi]."""
@@ -100,6 +102,7 @@ print()
 
 print("=== 4. raise_on_failure=True mode ===")
 try:
+
     @verified(raise_on_failure=True, post=lambda x, result: result == x + 2)
     def inc_wrong(x: float) -> float:
         """Off-by-one error: returns x+1, not x+2."""
@@ -107,7 +110,7 @@ try:
 
     print("ERROR: should have raised!")
 except VerificationError as e:
-    print(f"VerificationError raised as expected")
+    print("VerificationError raised as expected")
     print(f"  Status:          {e.certificate.status.value}")
     print(f"  Counterexample:  {e.certificate.counterexample}")
 print()

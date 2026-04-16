@@ -16,7 +16,6 @@ from __future__ import annotations
 from provably import verified
 from provably.engine import verify_function
 
-
 # ---------------------------------------------------------------------------
 # 1. Parameter contraction — adaptive learning rate stays in [0.5, 5.0]
 #
@@ -46,8 +45,8 @@ def contract_lr(lr: float) -> float:
 
 cert = contract_lr.__proof__
 print(f"Status: {cert}")
-print(f"  Pre:  lr in [0.5, 5.0]")
-print(f"  Post: result in [0.5, 5.0]")
+print("  Pre:  lr in [0.5, 5.0]")
+print("  Post: result in [0.5, 5.0]")
 print(f"  contract_lr(0.5) = {contract_lr(0.5)}")
 print(f"  contract_lr(5.0) = {contract_lr(5.0)}")
 print(f"  contract_lr(2.0) = {contract_lr(2.0)}")

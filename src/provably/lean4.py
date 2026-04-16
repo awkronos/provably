@@ -276,10 +276,7 @@ def generate_lean4_theorem(
         return "-- Error: not a function definition\nsorry"
 
     # Pick the output mode from parameter types.
-    all_int_or_bool = all(
-        param_types.get(name, float) in (int, bool)
-        for name in param_names
-    )
+    all_int_or_bool = all(param_types.get(name, float) in (int, bool) for name in param_names)
     # Crude return-type check — the decorator already filters out
     # unsupported annotations so ``float`` is the only 'must use ℝ'.
     ret_hint: type | None = None
@@ -309,9 +306,12 @@ def generate_lean4_theorem(
     body = _func_body_to_lean(func_ast, env)
 
     return_type = (
-        "Int" if core_mode and ret_hint is int
-        else "Bool" if core_mode and ret_hint is bool
-        else "Int" if core_mode
+        "Int"
+        if core_mode and ret_hint is int
+        else "Bool"
+        if core_mode and ret_hint is bool
+        else "Int"
+        if core_mode
         else "ℝ"
     )
     def_kw = "def" if core_mode else "noncomputable def"
@@ -518,7 +518,13 @@ def verify_with_lean4(
         param_types[name] = typ
         param_vars[name] = make_z3_var(name, typ)
 
-    # Build Z3 string representations of pre/post
+    # Build Z3 string representations of pre/post.
+    #
+    # Soundness rule: if the user's pre/post lambdas raise when evaluated
+    # against symbolic Z3 variables we must NOT silently discard the
+    # constraint — doing so would let Lean4 "prove" too much (pre = True).
+    # Return a translation-error certificate instead so the caller can see
+    # WHY verification refused.
     pre_strs: list[str] = []
     post_strs: list[str] = []
     param_list = [param_vars[n] for n in param_names]
@@ -526,27 +532,51 @@ def verify_with_lean4(
     if pre is not None:
         try:
             pre_z3 = pre(*param_list)
-            if isinstance(pre_z3, _z3.BoolRef):
-                pre_strs.append(str(pre_z3))
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — surfaced as cert
+            return ProofCertificate(
+                function_name=fname,
+                source_hash="",
+                status=Status.TRANSLATION_ERROR,
+                preconditions=(),
+                postconditions=(),
+                message=f"Precondition error: {e}",
+            )
+        if isinstance(pre_z3, _z3.BoolRef):
+            pre_strs.append(str(pre_z3))
 
     # Add refinement constraints
-    for name, var in param_vars.items():
-        typ = hints.get(name)
-        if typ is not None:
-            for constraint in extract_refinements(typ, var):
-                pre_strs.append(str(constraint))
+    try:
+        for name, var in param_vars.items():
+            typ = hints.get(name)
+            if typ is not None:
+                for constraint in extract_refinements(typ, var):
+                    pre_strs.append(str(constraint))
+    except TypeError as e:
+        return ProofCertificate(
+            function_name=fname,
+            source_hash="",
+            status=Status.TRANSLATION_ERROR,
+            preconditions=(),
+            postconditions=(),
+            message=f"Refinement error: {e}",
+        )
 
     if post is not None:
         # Create a result variable for postcondition
         result_var = _z3.Real("result")
         try:
             post_z3 = post(*param_list, result_var)
-            if isinstance(post_z3, _z3.BoolRef):
-                post_strs.append(str(post_z3))
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — surfaced as cert
+            return ProofCertificate(
+                function_name=fname,
+                source_hash="",
+                status=Status.TRANSLATION_ERROR,
+                preconditions=(),
+                postconditions=(),
+                message=f"Postcondition error: {e}",
+            )
+        if isinstance(post_z3, _z3.BoolRef):
+            post_strs.append(str(post_z3))
 
     # Convert to Lean4 syntax
     pre_lean = (
@@ -644,13 +674,18 @@ def export_lean4(
     pre_strs: list[str] = []
     post_strs: list[str] = []
 
+    # Soundness: the exporter must refuse to emit an incomplete theorem
+    # when the user's pre/post raises. A silently-dropped pre becomes a
+    # Lean theorem stronger than the user asked for, which will either
+    # fail to type-check (OK) or type-check spuriously if the post is
+    # trivially true (NOT OK).
     if pre is not None:
         try:
             pre_z3 = pre(*param_list)
-            if isinstance(pre_z3, _z3.BoolRef):
-                pre_strs.append(str(pre_z3))
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — re-raised as ValueError
+            raise ValueError(f"Precondition raised when exporting: {e}") from e
+        if isinstance(pre_z3, _z3.BoolRef):
+            pre_strs.append(str(pre_z3))
 
     for name, var in param_vars.items():
         typ = hints.get(name)
@@ -662,10 +697,10 @@ def export_lean4(
         result_var = _z3.Real("result")
         try:
             post_z3 = post(*param_list, result_var)
-            if isinstance(post_z3, _z3.BoolRef):
-                post_strs.append(str(post_z3))
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 — re-raised as ValueError
+            raise ValueError(f"Postcondition raised when exporting: {e}") from e
+        if isinstance(post_z3, _z3.BoolRef):
+            post_strs.append(str(post_z3))
 
     pre_lean = (
         " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in pre_strs) if pre_strs else None
