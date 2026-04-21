@@ -47,8 +47,12 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-WARMUP = 2
-MEASURE = 5
+# Increased from (2,5) to (5,25) on 2026-04-18: provably's measured wall-time
+# dropped to 50-80μs after L0 fast-cache + orjson disk-load + memoized cache
+# dir, so MEASURE=5 runs gave very noisy medians (±40% jitter from OS scheduler
+# at microsecond scale). MEASURE=25 stabilizes the median within ±3%.
+WARMUP = 5
+MEASURE = 25
 FIXTURES = _REPO_ROOT / "benches" / "fixtures"
 
 # ---------------------------------------------------------------------------
@@ -144,8 +148,23 @@ def bench_provably() -> dict[str, Any]:
 # 1. halmos — a16z Solidity symbolic execution via subprocess
 # ---------------------------------------------------------------------------
 
+def _augmented_env() -> dict[str, str]:
+    """Return os.environ with Homebrew and ~/.local/bin prepended to PATH.
+
+    Non-interactive SSH sessions strip these from PATH; halmos and forge
+    live there on macOS.
+    """
+    import os
+    env = os.environ.copy()
+    home = env.get("HOME", "/Users/schizodactyl")
+    extra = f"{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin"
+    env["PATH"] = f"{extra}:{env.get('PATH', '')}"
+    return env
+
+
 def bench_halmos() -> dict[str, Any]:
-    halmos_bin = shutil.which("halmos")
+    _env = _augmented_env()
+    halmos_bin = shutil.which("halmos", path=_env["PATH"])
     if halmos_bin is None:
         return {"name": "halmos", "version": "not-installed",
                 "wall_sec": None, "artifact": None, "ok": False,
@@ -159,7 +178,7 @@ def bench_halmos() -> dict[str, Any]:
                 "error": f"fixture not found: {sol_fixture}"}
 
     # Check foundry/forge availability (halmos requires it)
-    forge_bin = shutil.which("forge")
+    forge_bin = shutil.which("forge", path=_env["PATH"])
     if forge_bin is None:
         return {"name": "halmos", "version": "0.3.3",
                 "wall_sec": None, "artifact": None, "ok": False,
@@ -188,6 +207,7 @@ def bench_halmos() -> dict[str, Any]:
                 capture_output=True,
                 text=True,
                 timeout=60,
+                env=_env,
             )
             if build.returncode != 0:
                 return {"name": "halmos", "version": "0.3.3",
@@ -203,13 +223,14 @@ def bench_halmos() -> dict[str, Any]:
                     capture_output=True,
                     text=True,
                     timeout=120,
+                    env=_env,
                 )
                 if r.returncode != 0 and "passed" not in r.stdout:
                     raise RuntimeError(f"halmos failed: {r.stdout[-400:]} {r.stderr[-200:]}")
 
             samples = _time_fn(run)
             # Get halmos version
-            ver_r = subprocess.run(["halmos", "--version"], capture_output=True, text=True, timeout=10)
+            ver_r = subprocess.run(["halmos", "--version"], capture_output=True, text=True, timeout=10, env=_env)
             ver = ver_r.stdout.strip().split("\n")[0] if ver_r.returncode == 0 else "0.3.3"
 
             return {
