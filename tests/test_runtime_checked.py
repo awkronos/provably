@@ -255,7 +255,7 @@ class TestAsyncRuntimeChecked:
         async def async_double(x: float) -> float:
             return x * 2
 
-        result = asyncio.get_event_loop().run_until_complete(async_double(3.0))
+        result = asyncio.run(async_double(3.0))
         assert result == 6.0
 
     def test_async_pre_violation_raises(self) -> None:
@@ -267,7 +267,7 @@ class TestAsyncRuntimeChecked:
             return await async_fn(-1.0)
 
         with pytest.raises(ContractViolationError):
-            asyncio.get_event_loop().run_until_complete(run())
+            asyncio.run(run())
 
     def test_async_post_violation_raises(self) -> None:
         @runtime_checked(post=lambda x, result: result > 0, raise_on_failure=True)
@@ -278,7 +278,7 @@ class TestAsyncRuntimeChecked:
             return await async_fn(5.0)
 
         with pytest.raises(ContractViolationError):
-            asyncio.get_event_loop().run_until_complete(run())
+            asyncio.run(run())
 
 
 # ---------------------------------------------------------------------------

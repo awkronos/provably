@@ -86,11 +86,11 @@ def f(x):
         with pytest.raises(TranslationError, match="Modulo"):
             t.translate(func_ast, {"x": z3.Real("x")})
 
-    def test_unsupported_binop_raises(self) -> None:
-        """BitOr should raise."""
+    def test_matmult_binop_raises(self) -> None:
+        """@ (MatMult) should raise — not supported."""
         src = """
 def f(x, y):
-    return x | y
+    return x @ y
 """
         func_ast = ast.parse(textwrap.dedent(src)).body[0]
         t = Translator()

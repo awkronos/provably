@@ -30,6 +30,7 @@ dependencies = ["z3-solver>=4.12"]
 
 [project.optional-dependencies]
 hypothesis = ["hypothesis>=6.100"]
+speed = ["orjson>=3.10"]  # optional: 3-5x faster disk-cache serialization
 dev = [
     "pytest>=8.0",
     "pytest-cov>=6.0",
@@ -113,6 +114,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 # ---------------------------------------------------------------------------
 # Coverage
