@@ -34,12 +34,16 @@ from enum import Enum  # pragma: no cover
 from pathlib import Path  # pragma: no cover
 from typing import Any, get_type_hints  # pragma: no cover
 
+import logging  # pragma: no cover
+
 import z3  # pragma: no cover
+
+logger = logging.getLogger("provably")  # pragma: no cover
 
 # Optional orjson accelerator for disk-cache serialization (3-5x faster than
 # stdlib json for our typical certificate sizes of 200-800 bytes).
 try:  # pragma: no cover
-    import orjson as _orjson  # type: ignore[import-not-found]
+    import orjson as _orjson
     _HAS_ORJSON = True
 except ImportError:  # pragma: no cover
     _orjson = None  # type: ignore[assignment]
@@ -436,16 +440,18 @@ def _load_from_disk(cache_key: str) -> ProofCertificate | None:
     try:
         if _HAS_ORJSON:
             raw = path.read_bytes()
-            data = _orjson.loads(raw)  # type: ignore[union-attr]
+            data = _orjson.loads(raw)
         else:
             data = json.loads(path.read_text())
     except (FileNotFoundError, OSError):
         return None
-    except Exception:
+    except Exception as e:
+        logger.debug("disk cert load failed for %s: %s", cache_key, e)
         return None
     try:
         cert = ProofCertificate.from_json(data)
-    except Exception:
+    except Exception as e:
+        logger.debug("cert deserialize failed for %s: %s", cache_key, e)
         return None
     _proof_cache[cache_key] = cert  # warm the memory cache
     return cert
@@ -463,12 +469,12 @@ def _save_to_disk(cache_key: str, cert: ProofCertificate) -> None:
         tmp = path.with_suffix(".tmp")
         payload = cert.to_json()
         if _HAS_ORJSON:
-            tmp.write_bytes(_orjson.dumps(payload))  # type: ignore[union-attr]
+            tmp.write_bytes(_orjson.dumps(payload))
         else:
             tmp.write_text(json.dumps(payload, separators=(",", ":")))
         tmp.replace(path)  # atomic on POSIX
-    except Exception:
-        pass  # disk cache is best-effort
+    except Exception as e:
+        logger.debug("disk cert save failed for %s: %s", cache_key, e)  # best-effort
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +604,8 @@ def verify_function(
     # Resolve type hints
     try:
         hints = get_type_hints(func, include_extras=True)
-    except Exception:
+    except Exception as e:
+        logger.debug("get_type_hints failed for %s: %s", getattr(func, "__name__", "<fn>"), e)
         hints = {}
 
     # Create Z3 symbolic variables for parameters
@@ -644,8 +651,8 @@ def verify_function(
             )
             if first_line and "line" not in msg:
                 msg = f"{msg} (in '{fname}', near line {first_line})"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("source line annotation failed for %s: %s", fname, e)
         cert = _err(fname, source, msg)
         _proof_cache[cache_key] = cert
         return cert
@@ -856,7 +863,8 @@ def verify_module(module: _types.ModuleType) -> dict[str, ProofCertificate]:
     for attr_name in dir(module):
         try:
             obj = getattr(module, attr_name)
-        except Exception:
+        except Exception as e:
+            logger.debug("attr access failed for %s.%s: %s", module.__name__, attr_name, e)
             continue
         if callable(obj) and hasattr(obj, "__proof__"):
             cert: ProofCertificate = obj.__proof__

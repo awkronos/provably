@@ -155,6 +155,7 @@ def verified(
     pre: Callable[..., Any] | None = ...,
     post: Callable[..., Any] | None = ...,
     raise_on_failure: bool = ...,
+    strict: bool = ...,
     timeout_ms: int = ...,
     contracts: dict[str, dict[str, Any]] | None = ...,
     check_contracts: bool = ...,
@@ -167,6 +168,7 @@ def verified(
     pre: Callable[..., Any] | None = None,
     post: Callable[..., Any] | None = None,
     raise_on_failure: bool | None = None,
+    strict: bool | None = None,
     timeout_ms: int | None = None,
     contracts: dict[str, dict[str, Any]] | None = None,
     check_contracts: bool = False,
@@ -202,6 +204,16 @@ def verified(
     Async functions are not translated (Z3 does not support coroutine bodies).
     They receive a ``SKIPPED`` certificate and the wrapper is a passthrough.
     """
+    # Deprecated alias: ``strict=`` → ``raise_on_failure=``. Explicit
+    # ``raise_on_failure=`` wins when both are passed.
+    if strict is not None:
+        warnings.warn(
+            "verified(strict=...) is deprecated; use raise_on_failure=... instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if raise_on_failure is None:
+            raise_on_failure = strict
     # Fall back to global config
     if raise_on_failure is None:
         raise_on_failure = bool(_config.get("raise_on_failure", False))

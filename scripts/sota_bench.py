@@ -63,6 +63,10 @@ FIXTURES = _REPO_ROOT / "benches" / "fixtures"
 # dispatch (~4.37 ms).  _load_contract_fresh(i) embeds the counter in the
 # function name so each benchmark iteration gets a genuine cache miss.
 def _load_contract_fresh(counter: int):
+    # NOTE: We deliberately leave the temp .py file on disk — provably's
+    # engine uses inspect.getsource(fn) to compute the L0 cache key, which
+    # requires the source file to still exist when verify_function runs.
+    # Cleanup is done at bench end via _cleanup_contract_files().
     fn_name = f"erc20_transfer_{counter}"
     src = (
         f"def {fn_name}(balance: int, value: int) -> int:\n"
@@ -71,13 +75,16 @@ def _load_contract_fresh(counter: int):
     )
     tmp = _REPO_ROOT / "scripts" / f"_sota_contract_{counter}.py"
     tmp.write_text(src)
-    try:
-        spec = importlib.util.spec_from_file_location(f"_sota_contract_{counter}", tmp)
-        mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-        spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        return getattr(mod, fn_name)
-    finally:
-        tmp.unlink(missing_ok=True)
+    spec = importlib.util.spec_from_file_location(f"_sota_contract_{counter}", tmp)
+    mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return getattr(mod, fn_name)
+
+
+def _cleanup_contract_files() -> None:
+    """Remove temp contract files written by _load_contract_fresh."""
+    for f in (_REPO_ROOT / "scripts").glob("_sota_contract_*.py"):
+        f.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +425,8 @@ def bench_z3_direct() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def bench_solc_smt() -> dict[str, Any]:
-    solc_bin = shutil.which("solc")
+    _env = _augmented_env()
+    solc_bin = shutil.which("solc", path=_env["PATH"])
     if solc_bin is None:
         return {"name": "solc-SMTChecker", "version": "not-installed",
                 "wall_sec": None, "artifact": None, "ok": False,

@@ -1,7 +1,7 @@
 .PHONY: bench bench-sota test lint typecheck
 
 bench-sota:
-	python scripts/sota_bench.py
+	$(or $(PYTHON),python3) scripts/sota_bench.py
 
 bench: bench-sota
 
