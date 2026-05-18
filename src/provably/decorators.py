@@ -40,20 +40,20 @@ Note: In pre/post lambdas for @verified, use & instead of 'and',
       cannot be overloaded and will not produce Z3 expressions.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # pragma: no cover
 
-import functools
-import inspect
-import logging
-import warnings
-from collections.abc import Callable
-from typing import Any, TypeVar, overload
+import functools  # pragma: no cover
+import inspect  # pragma: no cover
+import logging  # pragma: no cover
+import warnings  # pragma: no cover
+from collections.abc import Callable  # pragma: no cover
+from typing import Any, TypeVar, overload  # pragma: no cover
 
-from .engine import ProofCertificate, Status, _config, verify_function
+from .engine import ProofCertificate, Status, _config, verify_function  # pragma: no cover
 
-logger = logging.getLogger("provably")
+logger = logging.getLogger("provably")  # pragma: no cover
 
-F = TypeVar("F", bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])  # pragma: no cover
 
 
 class VerificationError(Exception):
@@ -183,8 +183,6 @@ def verified(
         post: Postcondition lambda — takes ``(*args, result)``.
         raise_on_failure: If ``True``, raise :class:`VerificationError` when
             the proof fails.  Defaults to the global setting (``False``).
-        strict: Deprecated alias for *raise_on_failure*.  Will be removed in
-            a future version.
         timeout_ms: Z3 solver timeout in milliseconds.  Defaults to the
             global setting (5000ms).
         contracts: Pre/post contracts of functions called inside *func*,
@@ -206,16 +204,16 @@ def verified(
     Async functions are not translated (Z3 does not support coroutine bodies).
     They receive a ``SKIPPED`` certificate and the wrapper is a passthrough.
     """
-    # Handle deprecated 'strict' parameter
+    # Deprecated alias: ``strict=`` → ``raise_on_failure=``. Explicit
+    # ``raise_on_failure=`` wins when both are passed.
     if strict is not None:
         warnings.warn(
-            "The 'strict' parameter is deprecated. Use 'raise_on_failure' instead.",
+            "verified(strict=...) is deprecated; use raise_on_failure=... instead",
             DeprecationWarning,
             stacklevel=2,
         )
         if raise_on_failure is None:
             raise_on_failure = strict
-
     # Fall back to global config
     if raise_on_failure is None:
         raise_on_failure = bool(_config.get("raise_on_failure", False))

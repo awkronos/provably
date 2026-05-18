@@ -14,6 +14,9 @@ hypothesis installed (raises ImportError with an install hint on use).
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger("provably")
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any, get_args, get_origin, get_type_hints
 
@@ -301,7 +304,8 @@ def hypothesis_check(
     # Resolve type hints for all parameters
     try:
         hints = get_type_hints(func, include_extras=True)
-    except Exception:
+    except Exception as e:
+        logger.debug("get_type_hints failed for %s: %s", getattr(func, "__name__", "<fn>"), e)
         hints = {}
 
     import inspect
