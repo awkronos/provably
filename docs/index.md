@@ -93,7 +93,7 @@ def bad(n: int) -> int:
     return n // 2
 
 bad.__proof__.counterexample
-# {'n': 2, '__return__': 1}
+# e.g. {'n': -1, '__return__': -1} — Z3 returns some breaking input
 ```
 
 </div>

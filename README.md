@@ -87,7 +87,8 @@ scale.__proof__.verified  # True
 def bad_sqrt(n: int) -> int:
     return n // 2
 
-bad_sqrt.__proof__.counterexample  # {'n': 3, '__return__': 1}
+bad_sqrt.__proof__.counterexample  # e.g. {'n': 7, '__return__': 3} — 3*3 != 7
+# Z3 returns *some* input that breaks the contract; the exact value may vary.
 ```
 
 ### Compositionality
@@ -110,7 +111,9 @@ Bounded `while` loops are unrolled (up to 256 iterations), just like `for` loops
 ```python
 @verified(
     pre=lambda n: (n >= 0) & (n <= 10),
-    post=lambda n, result: result == n * (n + 1) // 2,
+    # Use `2 * result == n * (n + 1)`, not `result == n * (n + 1) // 2`:
+    # `//` is not defined on Z3 expressions inside a contract lambda.
+    post=lambda n, result: 2 * result == n * (n + 1),
 )
 def triangle(n: int) -> int:
     total = 0
@@ -156,12 +159,17 @@ dispatch.__proof__.verified  # True
 
 ### Tuple returns
 
+Subscript the result with a constant index — `result` is a tuple, so a bare
+`result >= 0` is a type error:
+
 ```python
 @verified(
-    post=lambda x, y, result: result >= 0,
+    post=lambda x, y, result: (result[0] == x + y) & (result[1] == x - y),
 )
 def sum_and_diff(x: float, y: float) -> tuple:
     return (x + y, x - y)
+
+sum_and_diff.__proof__.verified  # True
 ```
 
 ### Lean 4 backend
