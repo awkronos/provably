@@ -147,6 +147,7 @@ class ProofCertificate:
     message: str = ""  # pragma: no cover
     solver_time_ms: float = 0.0  # pragma: no cover
     z3_version: str = ""  # pragma: no cover
+    smt_lib: str = ""  # pragma: no cover — SMT-LIB unsat script (VERIFIED only)
 
     @property
     def verified(self) -> bool:
@@ -258,6 +259,7 @@ class ProofCertificate:
             "message": self.message,
             "solver_time_ms": self.solver_time_ms,
             "z3_version": self.z3_version,
+            "smt_lib": self.smt_lib,
         }
 
     @classmethod
@@ -290,6 +292,7 @@ class ProofCertificate:
             message=data.get("message", ""),
             solver_time_ms=float(data.get("solver_time_ms", 0.0)),
             z3_version=data.get("z3_version", ""),
+            smt_lib=data.get("smt_lib", ""),
         )
 
 
@@ -798,6 +801,9 @@ def verify_function(
             postconditions=tuple(post_strs),
             solver_time_ms=elapsed,
             z3_version=z3_ver,
+            # Capture the exact unsat VC so it can be re-checked / proven
+            # succinctly (see provably.succinct). Only meaningful on VERIFIED.
+            smt_lib=s.to_smt2(),
         )
     elif check == z3.sat:
         ce = _extract_counterexample(s.model(), param_vars, ret, result.tuple_meta)
