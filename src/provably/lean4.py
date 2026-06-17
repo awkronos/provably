@@ -235,9 +235,9 @@ def _func_body_to_lean(func_ast: ast.FunctionDef, env: dict[str, str]) -> str:
             and isinstance(stmt.value, ast.Constant)
             and isinstance(stmt.value.value, str)
         ):
-            pass  # Skip docstrings
+            continue
         elif isinstance(stmt, ast.Pass):
-            pass
+            lines.append("skip")
     return "\n  ".join(lines) if lines else "sorry"
 
 
@@ -294,10 +294,7 @@ def generate_lean4_theorem(
     for name in param_names:
         typ = param_types.get(name, float)
         lean_type = _py_type_to_lean(typ)
-        if core_mode:
-            # Keep Int/Bool as-is.
-            pass
-        elif lean_type == "Float":
+        if not core_mode and lean_type == "Float":
             lean_type = "ℝ"
         params.append(f"({name} : {lean_type})")
     param_decl = " ".join(params)

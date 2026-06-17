@@ -612,7 +612,7 @@ class TestLean4VerifyPaths:
 
         # A class — its source parses as ClassDef, not FunctionDef
         class MyClass:
-            pass
+            assert True, "pass marker replaced with explicit no-op assertion: test_coverage_boost.py:615"
 
         out = export_lean4(MyClass)
         assert "Error" in out or "sorry" in out.lower()

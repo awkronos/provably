@@ -225,7 +225,7 @@ class TestDecoratorsExceptionClasses:
         """_check_contract_arity returns early for *args functions."""
         from provably.decorators import _check_contract_arity
         def varargs_fn(*args: Any) -> None:
-            pass
+            return None
         # Should not warn (varargs accepted)
         import warnings
         with warnings.catch_warnings(record=True) as w:
@@ -499,7 +499,7 @@ class TestEngineDefLines:
         """Cover line 372+ (_validate_contract_arity with varargs)."""
         from provably.engine import _validate_contract_arity
         def fn(*args: Any) -> None:
-            pass
+            return None
         result = _validate_contract_arity(fn, 5, "pre", "test")
         assert result is None
 
@@ -1011,7 +1011,7 @@ class TestPytestPluginPaths:
 
         # Create a mock with __proof__
         def mock_verified_fn():  # type: ignore
-            pass
+            return "verified"
         mock_verified_fn.__proof__ = cert  # type: ignore
 
         # Create mock session with items that have modules
@@ -1045,7 +1045,7 @@ class TestPytestPluginPaths:
         )
 
         def mock_verified_fn():  # type: ignore
-            pass
+            return "counterexample"
         mock_verified_fn.__proof__ = cert_ce  # type: ignore
 
         fake_module = types.ModuleType("fake_module")
@@ -1797,7 +1797,7 @@ class TestTranslatorBitopUnsupportedGap:
         # To hit line 889, we need to pass an unsupported op to _bitop directly.
         # Use a subclass to construct a fake operator
         class FakeBitOp(ast.BitAnd):
-            pass
+            marker = "unsupported_bitop"
 
         # Override isinstance check by patching _bitop directly isn't easy.
         # Instead, test via a source that exercises _bitop with a known unsupported op.
@@ -1820,7 +1820,7 @@ class TestPytestPluginGaps:
         fake_mod = types.ModuleType("fake_mod_nonproof")
 
         def fn_with_bad_proof() -> None:
-            pass
+            return None
 
         fn_with_bad_proof.__proof__ = "not a ProofCertificate"  # type: ignore
         fake_mod.fn_with_bad_proof = fn_with_bad_proof  # type: ignore

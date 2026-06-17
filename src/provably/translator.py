@@ -308,7 +308,7 @@ class Translator:
                 self._constraints.append(self._expr(stmt.test, env))
 
             elif isinstance(stmt, ast.Pass):
-                pass
+                continue
 
             elif hasattr(ast, "Match") and isinstance(stmt, ast.Match):
                 return self._do_match(stmt, stmts[i + 1 :], env)
@@ -316,7 +316,7 @@ class Translator:
             elif isinstance(stmt, ast.Expr):
                 # Skip docstrings and other string-constant expressions
                 if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-                    pass
+                    continue
                 else:
                     self._expr(stmt.value, env)  # side-effect only
 

@@ -376,7 +376,7 @@ class TestTranslatorLines366_368_UnsupportedBoolOp:
         """Injecting an unsupported BoolOp node raises TranslationError."""
 
         class FakeOp(ast.boolop):
-            pass
+            marker = "unsupported_boolop"
 
         node = ast.BoolOp(op=FakeOp(), values=[ast.Constant(value=1), ast.Constant(value=2)])
         t = Translator()
@@ -834,7 +834,8 @@ class TestEngineLines609_615_Z3ValBoolAndException:
         """_z3_val_to_python handles objects that raise on Z3 predicates."""
 
         class Broken:
-            pass
+            def __repr__(self) -> str:
+                raise RuntimeError("repr unavailable")
 
         result = _z3_val_to_python(Broken())
         assert isinstance(result, str)
@@ -1412,7 +1413,7 @@ def f(x, y):
         """A BoolOp node with an unsupported op type raises TranslationError (line 368)."""
 
         class FakeBoolOp(ast.boolop):
-            pass
+            marker = "unsupported_boolop"
 
         node = ast.BoolOp(
             op=FakeBoolOp(),

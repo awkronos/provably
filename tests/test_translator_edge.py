@@ -418,8 +418,8 @@ def f(x):
             # Must have a warning about the unsupported while loop
             assert result.warnings, "Expected warning for while loop"
             assert any("While" in w or "while" in w.lower() for w in result.warnings)
-        except TranslationError:
-            pass  # Also acceptable
+        except TranslationError as exc:
+            assert "While" in str(exc) or "while" in str(exc).lower()
 
     def test_with_statement_unsupported(self) -> None:
         """with statements produce a warning (unsupported statement)."""
@@ -434,8 +434,8 @@ def f(x):
         try:
             result = t.translate(func_ast, {"x": x})
             assert result.warnings, "Expected warning for with statement"
-        except TranslationError:
-            pass
+        except TranslationError as exc:
+            assert "with" in str(exc).lower()
 
     def test_list_comprehension_unsupported(self) -> None:
         """List comprehensions raise TranslationError or emit a warning."""
@@ -449,8 +449,8 @@ def f(x):
         try:
             result = t.translate(func_ast, {"x": x})
             assert result.warnings, "Expected warning for list comprehension"
-        except TranslationError:
-            pass  # Acceptable — comprehension explicitly rejected
+        except TranslationError as exc:
+            assert "comprehension" in str(exc).lower() or "list" in str(exc).lower()
 
 
 # ---------------------------------------------------------------------------

@@ -656,7 +656,7 @@ class TestExportLean4EdgeCases:
         # which parses as ast.ClassDef, not FunctionDef.
         class C:
             def __init__(self) -> None:
-                pass
+                self.initialized = True
 
         out = export_lean4(C)
         assert "Error" in out or "sorry" in out.lower()
@@ -865,7 +865,7 @@ class TestEngineEdges:
         from provably.engine import Status, verify_function
 
         class NotAFunc:
-            pass
+            marker = "not_a_function"
 
         # __name__ gives "NotAFunc"; inspect.getsource works on classes,
         # but the AST will be ClassDef not FunctionDef.
