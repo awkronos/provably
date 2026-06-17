@@ -17,9 +17,12 @@ def bad_sqrt(n: int) -> int:
 cert = bad_sqrt.__proof__
 cert.verified        # False
 cert.status          # Status.COUNTEREXAMPLE
-cert.counterexample  # {'n': 3, '__return__': 1}
-# 3 // 2 = 1, but 1*1 != 3
+cert.counterexample  # e.g. {'n': 7, '__return__': 3} — 7 // 2 = 3, but 3*3 != 7
 ```
+
+Z3 returns *some* input satisfying the precondition that breaks the
+postcondition. The exact value is not guaranteed and may vary between runs or
+Z3 versions; only its existence (and that it is a genuine counterexample) is.
 
 Fields: one entry per parameter (original names) plus `__return__` for the return value.
 

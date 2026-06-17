@@ -376,7 +376,7 @@ class TestTranslatorLines366_368_UnsupportedBoolOp:
         """Injecting an unsupported BoolOp node raises TranslationError."""
 
         class FakeOp(ast.boolop):
-            pass
+            marker = "unsupported_boolop"
 
         node = ast.BoolOp(op=FakeOp(), values=[ast.Constant(value=1), ast.Constant(value=2)])
         t = Translator()
@@ -411,11 +411,11 @@ class TestTranslatorLine449_PowZeroReal:
 
 
 class TestTranslatorLine482_UnsupportedComparison:
-    def test_in_comparison_raises(self) -> None:
-        """'x in [1,2]' raises TranslationError for unsupported comparison."""
+    def test_is_comparison_raises(self) -> None:
+        """'x is 1' raises TranslationError — identity is not supported."""
         src = """
 def f(x):
-    return x in [1, 2, 3]
+    return x is 1
 """
         func_ast = _parse_func(src)
         t = Translator()
@@ -834,7 +834,8 @@ class TestEngineLines609_615_Z3ValBoolAndException:
         """_z3_val_to_python handles objects that raise on Z3 predicates."""
 
         class Broken:
-            pass
+            def __repr__(self) -> str:
+                raise RuntimeError("repr unavailable")
 
         result = _z3_val_to_python(Broken())
         assert isinstance(result, str)
@@ -1128,7 +1129,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
             return x * 2
 
         with pytest.raises(ContractViolationError) as exc_info:
-            asyncio.get_event_loop().run_until_complete(async_f(-1))
+            asyncio.run(async_f(-1))
 
         assert exc_info.value.kind == "pre"
 
@@ -1141,7 +1142,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
             return -x
 
         with pytest.raises(ContractViolationError) as exc_info:
-            asyncio.get_event_loop().run_until_complete(async_f(5))
+            asyncio.run(async_f(5))
 
         assert exc_info.value.kind == "post"
 
@@ -1157,7 +1158,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
             return x
 
         with pytest.raises(ContractViolationError):
-            asyncio.get_event_loop().run_until_complete(async_f(5))
+            asyncio.run(async_f(5))
 
     def test_async_runtime_checked_post_exception_treated_as_failure(self) -> None:
         """Async @runtime_checked treats exception in post as False."""
@@ -1171,7 +1172,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
             return x
 
         with pytest.raises(ContractViolationError):
-            asyncio.get_event_loop().run_until_complete(async_f(5))
+            asyncio.run(async_f(5))
 
     def test_async_runtime_checked_no_violation_returns_result(self) -> None:
         """Async @runtime_checked passes through when contracts hold."""
@@ -1185,7 +1186,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
         async def async_f(x: float) -> float:
             return x * 2
 
-        result = asyncio.get_event_loop().run_until_complete(async_f(3))
+        result = asyncio.run(async_f(3))
         assert result == 6
 
     def test_async_runtime_checked_raise_false_logs_not_raises(self) -> None:
@@ -1197,7 +1198,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
             return x
 
         # Should not raise
-        result = asyncio.get_event_loop().run_until_complete(async_f(-1))
+        result = asyncio.run(async_f(-1))
         assert result == -1
 
 
@@ -1412,7 +1413,7 @@ def f(x, y):
         """A BoolOp node with an unsupported op type raises TranslationError (line 368)."""
 
         class FakeBoolOp(ast.boolop):
-            pass
+            marker = "unsupported_boolop"
 
         node = ast.BoolOp(
             op=FakeBoolOp(),
@@ -1789,8 +1790,8 @@ class TestTranslatorUnsupportedCompareOp:
         with pytest.raises(TranslationError, match="Unsupported comparison"):
             t._compare(node, {"x": x})
 
-    def test_in_op_raises_via_injection(self) -> None:
-        """Injected ast.In operator raises TranslationError."""
+    def test_in_op_non_list_raises(self) -> None:
+        """'in' against a non-list expression raises TranslationError."""
         node = ast.Compare(
             left=ast.Name(id="x", ctx=ast.Load()),
             ops=[ast.In()],
@@ -1799,7 +1800,7 @@ class TestTranslatorUnsupportedCompareOp:
         ast.fix_missing_locations(node)
         t = Translator()
         x = z3.Int("x")
-        with pytest.raises(TranslationError, match="Unsupported comparison"):
+        with pytest.raises(TranslationError, match="list literal or comprehension"):
             t._compare(node, {"x": x})
 
 

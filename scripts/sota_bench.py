@@ -125,6 +125,7 @@ def _time_fn(fn, warmup: int = WARMUP, measure: int = MEASURE) -> list[float]:
 
 def bench_provably() -> dict[str, Any]:
     import z3 as _z3
+
     from provably.engine import verify_function
 
     # Must use z3.And so provably's engine receives Z3 expressions, not Python booleans
@@ -271,7 +272,14 @@ def bench_halmos() -> dict[str, Any]:
 def bench_pysmt_z3() -> dict[str, Any]:
     try:
         from pysmt.shortcuts import (  # type: ignore[import]
-            GE, LE, And, Equals, Int, Minus, Symbol, is_unsat,
+            GE,
+            LE,
+            And,
+            Equals,
+            Int,
+            Minus,
+            Symbol,
+            is_unsat,
         )
         from pysmt.typing import INT  # type: ignore[import]
     except ImportError as e:
@@ -441,7 +449,7 @@ def bench_solc_smt() -> dict[str, Any]:
     # Get version
     try:
         ver_r = subprocess.run([solc_bin, "--version"], capture_output=True, text=True, timeout=10)
-        ver_line = [l for l in ver_r.stdout.splitlines() if "Version" in l]
+        ver_line = [line for line in ver_r.stdout.splitlines() if "Version" in line]
         ver = ver_line[0].split("Version:")[1].strip() if ver_line else "unknown"
     except Exception:
         ver = "unknown"
@@ -486,7 +494,7 @@ def bench_solc_smt() -> dict[str, Any]:
 
 def run() -> dict[str, Any]:
     print("provably SOTA bench — ERC-20 transfer overflow safety")
-    print(f"  workload: transfer(balance, value): no underflow when value <= balance")
+    print("  workload: transfer(balance, value): no underflow when value <= balance")
     print(f"  warmup={WARMUP}, measure={MEASURE} runs each\n")
 
     # Run all competitors

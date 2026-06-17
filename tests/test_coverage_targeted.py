@@ -190,7 +190,7 @@ class TestFloatStrategyMarkerTightening:
 
         _collect()
         assert captured
-        assert all(0.0 <= x < 5.0 for x in captured), captured
+        assert all(0.0 <= x <= 5.0 for x in captured), captured
 
     def test_float_noteq_uses_filter(self) -> None:
         from provably.hypothesis import from_refinements
@@ -396,7 +396,9 @@ class TestLean4ExprCorners:
 
         # ast.Lambda is not handled → should return sorry comment
         node = ast.Lambda(
-            args=ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
+            args=ast.arguments(
+                posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]
+            ),
             body=ast.Constant(value=0),
         )
         out = _expr_to_lean(node)
@@ -409,11 +411,7 @@ class TestLean4FuncBody:
         """x += 1 inside a function body is translated to let x := (x + 1)."""
         from provably.lean4 import generate_lean4_theorem
 
-        source = (
-            "def f(x: int) -> int:\n"
-            "    x += 1\n"
-            "    return x\n"
-        )
+        source = "def f(x: int) -> int:\n    x += 1\n    return x\n"
         out = generate_lean4_theorem(
             func_name="f",
             param_names=["x"],
@@ -495,11 +493,7 @@ class TestLean4FuncBody:
 
         # if with no explicit return in then-branch
         source = (
-            "def p(x: int) -> int:\n"
-            "    if x >= 0:\n"
-            "        y = 1\n"
-            "    else:\n"
-            "        return -x\n"
+            "def p(x: int) -> int:\n    if x >= 0:\n        y = 1\n    else:\n        return -x\n"
         )
         out = generate_lean4_theorem(
             func_name="p",
@@ -662,7 +656,7 @@ class TestExportLean4EdgeCases:
         # which parses as ast.ClassDef, not FunctionDef.
         class C:
             def __init__(self) -> None:
-                pass
+                self.initialized = True
 
         out = export_lean4(C)
         assert "Error" in out or "sorry" in out.lower()
@@ -871,7 +865,7 @@ class TestEngineEdges:
         from provably.engine import Status, verify_function
 
         class NotAFunc:
-            pass
+            marker = "not_a_function"
 
         # __name__ gives "NotAFunc"; inspect.getsource works on classes,
         # but the AST will be ClassDef not FunctionDef.

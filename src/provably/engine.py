@@ -25,6 +25,7 @@ import ast  # pragma: no cover
 import hashlib  # pragma: no cover
 import inspect  # pragma: no cover
 import json  # pragma: no cover
+import logging  # pragma: no cover
 import textwrap  # pragma: no cover
 import time  # pragma: no cover
 import types as _types  # pragma: no cover
@@ -34,9 +35,10 @@ from enum import Enum  # pragma: no cover
 from pathlib import Path  # pragma: no cover
 from typing import Any, get_type_hints  # pragma: no cover
 
-import logging  # pragma: no cover
-
 import z3  # pragma: no cover
+
+from .translator import TranslationError, Translator  # pragma: no cover
+from .types import extract_refinements, make_z3_var  # pragma: no cover
 
 logger = logging.getLogger("provably")  # pragma: no cover
 
@@ -44,13 +46,11 @@ logger = logging.getLogger("provably")  # pragma: no cover
 # stdlib json for our typical certificate sizes of 200-800 bytes).
 try:  # pragma: no cover
     import orjson as _orjson
+
     _HAS_ORJSON = True
 except ImportError:  # pragma: no cover
     _orjson = None  # type: ignore[assignment]
     _HAS_ORJSON = False
-
-from .translator import TranslationError, Translator  # pragma: no cover
-from .types import extract_refinements, make_z3_var  # pragma: no cover
 
 # ---------------------------------------------------------------------------
 # Global configuration
@@ -147,6 +147,7 @@ class ProofCertificate:
     message: str = ""  # pragma: no cover
     solver_time_ms: float = 0.0  # pragma: no cover
     z3_version: str = ""  # pragma: no cover
+    smt_lib: str = ""  # pragma: no cover — SMT-LIB unsat script (VERIFIED only)
 
     @property
     def verified(self) -> bool:
@@ -258,6 +259,7 @@ class ProofCertificate:
             "message": self.message,
             "solver_time_ms": self.solver_time_ms,
             "z3_version": self.z3_version,
+            "smt_lib": self.smt_lib,
         }
 
     @classmethod
@@ -290,6 +292,7 @@ class ProofCertificate:
             message=data.get("message", ""),
             solver_time_ms=float(data.get("solver_time_ms", 0.0)),
             z3_version=data.get("z3_version", ""),
+            smt_lib=data.get("smt_lib", ""),
         )
 
 
@@ -798,6 +801,9 @@ def verify_function(
             postconditions=tuple(post_strs),
             solver_time_ms=elapsed,
             z3_version=z3_ver,
+            # Capture the exact unsat VC so it can be re-checked / proven
+            # succinctly (see provably.succinct). Only meaningful on VERIFIED.
+            smt_lib=s.to_smt2(),
         )
     elif check == z3.sat:
         ce = _extract_counterexample(s.model(), param_vars, ret, result.tuple_meta)

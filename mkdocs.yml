@@ -122,6 +122,7 @@ nav:
       - provably.types: api/types.md
       - provably.engine: api/engine.md
       - provably.lean4: api/lean4.md
+      - provably.hypothesis: api/hypothesis.md
   - Self-Proof: self-proof.md
   - FAQ: faq.md
   - Changelog: changelog.md

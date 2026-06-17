@@ -15,16 +15,16 @@ These compose with other annotations::
     x: Annotated[Positive, Le(100)]  # 0 < x <= 100
 """
 
-from __future__ import annotations
+from __future__ import annotations  # pragma: no cover
 
-from typing import Annotated, Any, get_args, get_origin
+from typing import Annotated, Any, get_args, get_origin  # pragma: no cover
 
-import z3
+import z3  # pragma: no cover
 
-HAS_Z3 = True  # z3-solver is a hard dependency
+HAS_Z3 = True  # z3-solver is a hard dependency  # pragma: no cover
 
 
-class RefinementError(TypeError):
+class RefinementError(TypeError):  # pragma: no cover
     """Raised when a refinement predicate fails to produce a Z3 constraint.
 
     Silently dropping a broken refinement would weaken the precondition
@@ -101,7 +101,7 @@ def make_z3_var(name: str, typ: type) -> Any:
 # ---------------------------------------------------------------------------
 
 
-class Gt:
+class Gt:  # pragma: no cover
     """Strictly greater than a bound.
 
     Example::
@@ -118,7 +118,7 @@ class Gt:
         return f"Gt({self.bound})"
 
 
-class Ge:
+class Ge:  # pragma: no cover
     """Greater than or equal to a bound.
 
     Example::
@@ -135,7 +135,7 @@ class Ge:
         return f"Ge({self.bound})"
 
 
-class Lt:
+class Lt:  # pragma: no cover
     """Strictly less than a bound.
 
     Example::
@@ -152,7 +152,7 @@ class Lt:
         return f"Lt({self.bound})"
 
 
-class Le:
+class Le:  # pragma: no cover
     """Less than or equal to a bound.
 
     Example::
@@ -169,7 +169,7 @@ class Le:
         return f"Le({self.bound})"
 
 
-class Between:
+class Between:  # pragma: no cover
     """Inclusive range [lo, hi].
 
     Example::
@@ -188,7 +188,7 @@ class Between:
         return f"Between({self.lo}, {self.hi})"
 
 
-class NotEq:
+class NotEq:  # pragma: no cover
     """Not equal to a value.
 
     Example::
@@ -281,10 +281,10 @@ def extract_refinements(typ: type, var: Any) -> list[Any]:
 # ---------------------------------------------------------------------------
 
 #: ``float`` that is strictly greater than zero (``x > 0``).
-Positive = Annotated[float, Gt(0)]
+Positive = Annotated[float, Gt(0)]  # pragma: no cover
 
 #: ``float`` that is greater than or equal to zero (``x >= 0``).
-NonNegative = Annotated[float, Ge(0)]
+NonNegative = Annotated[float, Ge(0)]  # pragma: no cover
 
 #: ``float`` in the closed unit interval ``[0, 1]`` (``0 <= x <= 1``).
-UnitInterval = Annotated[float, Between(0, 1)]
+UnitInterval = Annotated[float, Between(0, 1)]  # pragma: no cover

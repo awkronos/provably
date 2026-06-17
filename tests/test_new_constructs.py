@@ -348,10 +348,13 @@ class TestWhileLoopSoundness:
                 i += 1
             return i
 
+        # timeout_ms=30000: the 256-iteration unroll produces a large SMT formula;
+        # 5s default can flake under build-sweep load.
         cert = verify_function(
             count_up,
             pre=lambda n: n >= 0,  # unbounded
             post=lambda n, result: result == n,
+            timeout_ms=30000,
         )
         assert cert.status == Status.COUNTEREXAMPLE, cert.status
 

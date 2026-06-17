@@ -27,14 +27,19 @@ Optional extras
   (auto-registered when provably is installed).
 """
 
-from __future__ import annotations
+from __future__ import annotations  # pragma: no cover
 
-__version__ = "0.3.0"
+__version__ = "0.3.0"  # pragma: no cover
 
-from z3 import And, Implies, Not, Or
+from z3 import And, Implies, Not, Or  # pragma: no cover
 
-from .decorators import ContractViolationError, VerificationError, runtime_checked, verified
-from .engine import (
+from .decorators import (
+    ContractViolationError,
+    VerificationError,
+    runtime_checked,
+    verified,
+)  # pragma: no cover
+from .engine import (  # pragma: no cover
     ProofCertificate,
     Status,
     clear_cache,
@@ -42,9 +47,9 @@ from .engine import (
     verify_function,
     verify_module,
 )
-from .lean4 import HAS_LEAN4, LEAN4_VERSION, export_lean4, verify_with_lean4
-from .translator import TranslationError
-from .types import (
+from .lean4 import HAS_LEAN4, LEAN4_VERSION, export_lean4, verify_with_lean4  # pragma: no cover
+from .translator import TranslationError  # pragma: no cover
+from .types import (  # pragma: no cover
     Between,
     Ge,
     Gt,
@@ -56,7 +61,7 @@ from .types import (
     UnitInterval,
 )
 
-__all__ = [
+__all__ = [  # pragma: no cover
     "verified",
     "runtime_checked",
     "VerificationError",

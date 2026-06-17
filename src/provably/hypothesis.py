@@ -15,16 +15,13 @@ hypothesis installed (raises ImportError with an install hint on use).
 from __future__ import annotations
 
 import logging
-logger = logging.getLogger("provably")
-
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, get_args, get_origin, get_type_hints
+from typing import Annotated, Any, get_args, get_origin, get_type_hints
 
 from .engine import ProofCertificate, Status, verify_function
 from .types import Between, Ge, Gt, Le, Lt, NotEq
 
-if TYPE_CHECKING:
-    pass
+logger = logging.getLogger("provably")
 
 
 def _require_hypothesis() -> Any:
@@ -412,6 +409,10 @@ def proven_property(
         The original function with ``__proof__`` and ``__hypothesis_result__``
         attached. No runtime overhead.
 
+    The Hypothesis fallback only runs when Z3 returns ``Status.UNKNOWN``.
+    When Z3 verifies the goal, finds a counterexample, or hits a
+    ``TRANSLATION_ERROR``, ``__hypothesis_result__`` stays ``None``.
+
     Example::
 
         from provably.hypothesis import proven_property
@@ -420,10 +421,11 @@ def proven_property(
             pre=lambda x: x >= 0,
             post=lambda x, r: r >= 0,
         )
-        def sqrt_approx(x: float) -> float:
-            return x ** 0.5
+        def half(x: float) -> float:
+            return x / 2
 
-        assert sqrt_approx.__proof__.status != Status.COUNTEREXAMPLE
+        assert half.__proof__.verified          # Z3 decided it
+        assert half.__hypothesis_result__ is None  # no fallback needed
     """
     import functools
 

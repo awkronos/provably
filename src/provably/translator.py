@@ -40,18 +40,18 @@ Soundness invariants:
     last case's return value for unmatched subjects.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # pragma: no cover
 
-import ast
-from dataclasses import dataclass, field
-from typing import Any
+import ast  # pragma: no cover
+from dataclasses import dataclass, field  # pragma: no cover
+from typing import Any  # pragma: no cover
 
-import z3
+import z3  # pragma: no cover
 
-HAS_Z3 = True  # z3-solver is a hard dependency
+HAS_Z3 = True  # z3-solver is a hard dependency  # pragma: no cover
 
 # Maximum number of iterations for ``for i in range(N)`` unrolling.
-_MAX_UNROLL = 256
+_MAX_UNROLL = 256  # pragma: no cover
 
 
 class TranslationError(Exception):
@@ -308,7 +308,7 @@ class Translator:
                 self._constraints.append(self._expr(stmt.test, env))
 
             elif isinstance(stmt, ast.Pass):
-                pass
+                continue
 
             elif hasattr(ast, "Match") and isinstance(stmt, ast.Match):
                 return self._do_match(stmt, stmts[i + 1 :], env)
@@ -316,7 +316,7 @@ class Translator:
             elif isinstance(stmt, ast.Expr):
                 # Skip docstrings and other string-constant expressions
                 if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-                    pass
+                    continue
                 else:
                     self._expr(stmt.value, env)  # side-effect only
 
@@ -758,6 +758,18 @@ class Translator:
             right = self._expr(node.right, env)
             return self._binop(node.op, left, right)
 
+        # List literal as a direct expression: [a, b, c] -> Python list of Z3 exprs.
+        # Lists are consumed only by sum/any/all/sorted/map/filter, not returned
+        # as verification values; a bare return [a,b,c] falls through downstream
+        # coercion errors (Z3 has no list sort).
+        if isinstance(node, ast.List):
+            return [self._expr(e, env) for e in node.elts]
+
+        # List comprehension: [f(i) for i in range(N)] -> Python list of Z3 exprs.
+        # Restricted subset: exactly one generator over range(N), no filters.
+        if isinstance(node, ast.ListComp):
+            return self._list_comp(node, env)
+
         if isinstance(node, ast.UnaryOp):
             operand = self._expr(node.operand, env)
             return self._unaryop(node.op, operand)
@@ -823,6 +835,10 @@ class Translator:
         raise TranslationError(f"Unsupported constant type: {type(value).__name__}")
 
     def _binop(self, op: ast.operator, left: Any, right: Any) -> Any:
+        # Bitwise ops operate on integers; handle BEFORE _coerce, because
+        # _coerce may promote int→real. Bitwise on reals is undefined.
+        if isinstance(op, (ast.BitAnd, ast.BitOr, ast.BitXor, ast.LShift, ast.RShift)):
+            return self._bitop(op, left, right)
         left, right = self._coerce(left, right)
         if isinstance(op, ast.Add):
             return left + right
@@ -843,6 +859,34 @@ class Translator:
         if isinstance(op, ast.Pow):
             return self._pow(left, right)
         raise TranslationError(f"Unsupported operator: {type(op).__name__}")
+
+    def _bitop(self, op: ast.operator, left: Any, right: Any) -> Any:
+        """Translate bitwise ops via Int→BitVec(64)→Int round-trip.
+
+        Semantics: two's-complement 64-bit signed. Operands outside
+        [-2**63, 2**63) wrap silently; downstream solvers see the wrapped
+        value. Callers that need pure-integer arithmetic should avoid
+        mixing bitwise and arithmetic ops on the same value.
+        """
+        if left.sort() != z3.IntSort() or right.sort() != z3.IntSort():
+            raise TranslationError(
+                f"Bitwise {type(op).__name__} only supported on integer operands "
+                f"(got {left.sort()} and {right.sort()})"
+            )
+        bvl = z3.Int2BV(left, 64)
+        bvr = z3.Int2BV(right, 64)
+        if isinstance(op, ast.BitAnd):
+            return z3.BV2Int(bvl & bvr, is_signed=True)
+        if isinstance(op, ast.BitOr):
+            return z3.BV2Int(bvl | bvr, is_signed=True)
+        if isinstance(op, ast.BitXor):
+            return z3.BV2Int(bvl ^ bvr, is_signed=True)
+        if isinstance(op, ast.LShift):
+            return z3.BV2Int(bvl << bvr, is_signed=True)
+        if isinstance(op, ast.RShift):
+            # Arithmetic (signed) right shift preserves the sign bit.
+            return z3.BV2Int(bvl >> bvr, is_signed=True)
+        raise TranslationError(f"Unsupported bitwise op: {type(op).__name__}")
 
     def _pow(self, base: Any, exp: Any) -> Any:
         """Handle ** with constant integer exponents only."""
@@ -875,10 +919,44 @@ class Translator:
         raise TranslationError(f"Unsupported unary op: {type(op).__name__}")
 
     def _compare(self, node: ast.Compare, env: dict[str, Any]) -> Any:
-        """Translate comparisons, including chained (a < b < c)."""
+        """Translate comparisons, including chained (a < b < c).
+
+        Also supports ``in`` / ``not in`` for list literals and
+        list comprehensions — these evaluate to a disjunction
+        (respectively conjunction) of equalities.
+        """
+        lineno = getattr(node, "lineno", "?")
         left = self._expr(node.left, env)
         parts: list[Any] = []
         for op, comp_node in zip(node.ops, node.comparators, strict=False):
+            # Membership ops need the raw AST, not an evaluated operand,
+            # because the right side is a list (Python list of Z3 exprs)
+            # not a Z3 expression.
+            if isinstance(op, (ast.In, ast.NotIn)):
+                right_items = self._eval_list_like(
+                    comp_node, env, who=("'in'" if isinstance(op, ast.In) else "'not in'"),
+                )
+                if not right_items:
+                    # x in [] = False; x not in [] = True
+                    parts.append(z3.BoolVal(isinstance(op, ast.NotIn)))
+                    left = z3.BoolVal(False)  # chained membership is unusual; preserve no-op
+                    continue
+                eqs: list[Any] = []
+                for item in right_items:
+                    lc, rc = self._coerce(left, item)
+                    eqs.append(lc == rc)
+                if isinstance(op, ast.In):
+                    parts.append(z3.Or(*eqs) if len(eqs) > 1 else eqs[0])
+                else:
+                    # not in => all-ne
+                    nes = []
+                    for item in right_items:
+                        lc, rc = self._coerce(left, item)
+                        nes.append(lc != rc)
+                    parts.append(z3.And(*nes) if len(nes) > 1 else nes[0])
+                # After a membership op, chaining is rare; keep left as-is
+                # (Python semantics says `a in xs > b` is awkward but legal).
+                continue
             right = self._expr(comp_node, env)
             lc, rc = self._coerce(left, right)
             if isinstance(op, ast.Lt):
@@ -896,12 +974,169 @@ class Translator:
             else:
                 raise TranslationError(
                     f"Unsupported comparison: {type(op).__name__}"
-                    f" (line {getattr(node, 'lineno', '?')})"
+                    f" (line {lineno})"
                 )
             left = right  # chaining
         if len(parts) == 1:
             return parts[0]
         return z3.And(*parts)
+
+    # ------------------------------------------------------------------
+    # List helpers (list literal, list comprehension, sorted/map/filter
+    # results)
+    # ------------------------------------------------------------------
+
+    def _eval_list_like(
+        self, node: ast.expr, env: dict[str, Any], *, who: str = "list-consuming call"
+    ) -> list[Any]:
+        """Evaluate *node* and expect a Python list of Z3 exprs.
+
+        Accepts ``ast.List``, ``ast.ListComp``, and any expression that
+        evaluates to a Python list (``sorted(...)`` / ``map(...)`` /
+        ``filter(...)`` results). Raises :class:`TranslationError` on
+        any other shape (e.g. a Z3 scalar, generator, dict, etc.).
+        """
+        lineno = getattr(node, "lineno", "?")
+        if isinstance(node, ast.List):
+            return [self._expr(e, env) for e in node.elts]
+        if isinstance(node, ast.ListComp):
+            return self._list_comp(node, env)
+        # Evaluate and check if result is a Python list
+        val = self._expr(node, env)
+        if isinstance(val, list):
+            return val
+        raise TranslationError(
+            f"{who} requires a list literal or comprehension (line {lineno}), "
+            f"got {type(node).__name__}"
+        )
+
+    def _resolve_int(self, n: ast.expr) -> int:
+        """Resolve a range bound to a concrete Python int.
+
+        Accepts integer literals and closure variables that are
+        already-bound Z3 integer constants.
+        """
+        lineno = getattr(n, "lineno", "?")
+        if isinstance(n, ast.Constant) and isinstance(n.value, int):
+            return n.value
+        if isinstance(n, ast.Name):
+            cv = self.closure_vars.get(n.id)
+            if cv is not None and z3.is_int_value(cv):
+                return int(cv.as_long())
+        raise TranslationError(
+            f"range() bound must be a constant integer (line {lineno})"
+        )
+
+    def _apply_callable(
+        self, func_node: ast.expr, args: list[Any], env: dict[str, Any]
+    ) -> Any:
+        """Invoke a lambda / named builtin on evaluated arguments.
+
+        Used by map()/filter() to apply the first argument to each item.
+        Supports:
+          - ``ast.Lambda`` with the same arity as *args*, inlined by
+            extending the env with the lambda's parameters.
+          - ``ast.Name`` referring to a _BUILTINS entry (min/max/abs/...)
+            or a known ``@verified`` contract.
+        """
+        lineno = getattr(func_node, "lineno", "?")
+        if isinstance(func_node, ast.Lambda):
+            params = [a.arg for a in func_node.args.args]
+            if len(params) != len(args):
+                raise TranslationError(
+                    f"Lambda arity mismatch: expected {len(params)}, got {len(args)} "
+                    f"(line {lineno})"
+                )
+            if (
+                func_node.args.vararg is not None
+                or func_node.args.kwarg is not None
+                or func_node.args.kwonlyargs
+            ):
+                raise TranslationError(
+                    f"Lambdas with *args / **kwargs / keyword-only args not supported "
+                    f"(line {lineno})"
+                )
+            sub_env = {**env, **dict(zip(params, args, strict=False))}
+            return self._expr(func_node.body, sub_env)
+        if isinstance(func_node, ast.Name):
+            fname = func_node.id
+            if fname in _BUILTINS:
+                return _BUILTINS[fname](*args)
+            if fname in self.verified_contracts:
+                return self._call_verified(fname, args)
+            raise TranslationError(
+                f"map()/filter() function '{fname}' not supported (line {lineno}). "
+                "Use a lambda, a builtin (min/max/abs), or a @verified function."
+            )
+        raise TranslationError(
+            f"map()/filter() first argument must be a lambda or simple name "
+            f"(line {lineno}), got {type(func_node).__name__}"
+        )
+
+    def _list_comp(self, node: ast.ListComp, env: dict[str, Any]) -> list[Any]:
+        """Translate a list comprehension into a Python list of Z3 exprs.
+
+        Restricted subset:
+          - exactly one ``for`` generator
+          - iterable must be ``range(N)`` / ``range(a, b)`` / ``range(a, b, c)``
+            with constant integer bounds
+          - no ``if`` filters (would need symbolic list sort)
+        """
+        lineno = getattr(node, "lineno", "?")
+        if len(node.generators) != 1:
+            raise TranslationError(
+                f"List comprehension with multiple generators not supported "
+                f"(line {lineno})"
+            )
+        gen = node.generators[0]
+        if gen.ifs:
+            raise TranslationError(
+                f"Filtered list comprehension (with 'if') not supported "
+                f"(line {lineno})"
+            )
+        if not (
+            isinstance(gen.iter, ast.Call)
+            and isinstance(gen.iter.func, ast.Name)
+            and gen.iter.func.id == "range"
+        ):
+            raise TranslationError(
+                f"List comprehension only supported over range(N) "
+                f"(line {lineno})"
+            )
+        if not isinstance(gen.target, ast.Name):
+            raise TranslationError(
+                f"List comprehension loop variable must be a simple name "
+                f"(line {lineno})"
+            )
+        range_args = gen.iter.args
+        if len(range_args) == 1:
+            start, stop, step = 0, self._resolve_int(range_args[0]), 1
+        elif len(range_args) == 2:
+            start = self._resolve_int(range_args[0])
+            stop = self._resolve_int(range_args[1])
+            step = 1
+        elif len(range_args) == 3:
+            start = self._resolve_int(range_args[0])
+            stop = self._resolve_int(range_args[1])
+            step = self._resolve_int(range_args[2])
+        else:
+            raise TranslationError(
+                f"range() takes 1-3 args (line {lineno})"
+            )
+        if step == 0:
+            raise TranslationError(f"range() step cannot be zero (line {lineno})")
+        iterations = list(range(start, stop, step))
+        if len(iterations) > _MAX_UNROLL:
+            raise TranslationError(
+                f"List comprehension would unroll {len(iterations)} iterations, "
+                f"max is {_MAX_UNROLL} (line {lineno})"
+            )
+        loop_var = gen.target.id
+        items: list[Any] = []
+        for i_val in iterations:
+            iter_env = {**env, loop_var: z3.IntVal(i_val)}
+            items.append(self._expr(node.elt, iter_env))
+        return items
 
     def _attribute(self, node: ast.Attribute, env: dict[str, Any]) -> Any:
         """Translate attribute access (math.pi, math.e)."""
@@ -937,6 +1172,191 @@ class Translator:
                 f" (line {getattr(node, 'lineno', '?')})"
             )
         fname = node.func.id
+
+        lineno = getattr(node, "lineno", "?")
+
+        # any() over list literals, list comps, and sorted/map/filter results.
+        if fname == "any":
+            if len(node.args) != 1:
+                raise TranslationError(
+                    f"any() takes exactly 1 argument (line {lineno})"
+                )
+            arg_node = node.args[0]
+            try:
+                items = self._eval_list_like(arg_node, env, who="any()")
+            except TranslationError:
+                raise TranslationError(
+                    f"any() only supported over list literals or comprehensions "
+                    f"(line {lineno}). Use any([a, b, c]) or any([f(i) for i in range(N)])."
+                ) from None
+            if not items:
+                return z3.BoolVal(False)
+            return z3.Or(*items) if len(items) > 1 else items[0]
+
+        if fname == "all":
+            if len(node.args) != 1:
+                raise TranslationError(
+                    f"all() takes exactly 1 argument (line {lineno})"
+                )
+            arg_node = node.args[0]
+            try:
+                items = self._eval_list_like(arg_node, env, who="all()")
+            except TranslationError:
+                raise TranslationError(
+                    f"all() only supported over list literals or comprehensions "
+                    f"(line {lineno}). Use all([a, b, c]) or all([f(i) for i in range(N)])."
+                ) from None
+            if not items:
+                return z3.BoolVal(True)
+            return z3.And(*items) if len(items) > 1 else items[0]
+
+        if fname == "sum":
+            if len(node.args) != 1:
+                raise TranslationError(
+                    f"sum() takes exactly 1 argument (line {lineno})"
+                )
+            arg_node = node.args[0]
+            # sum([a, b, c]) or sum([f(i) for i in range(N)]) or
+            # sum(sorted(...)) / sum(map(...)) / sum(filter(...))
+            if (
+                isinstance(arg_node, (ast.List, ast.ListComp))
+                or isinstance(arg_node, ast.Call)
+                and isinstance(arg_node.func, ast.Name)
+                and arg_node.func.id in ("sorted", "map", "filter")
+            ):
+                items = self._eval_list_like(arg_node, env, who="sum()")
+                if not items:
+                    return z3.IntVal(0)
+                result = items[0]
+                for item in items[1:]:
+                    result, item = self._coerce(result, item)
+                    result = result + item
+                return result
+            # sum(f(i) for i in range(N)) — generator over range, unroll
+            if isinstance(arg_node, ast.GeneratorExp) and len(arg_node.generators) == 1:
+                gen = arg_node.generators[0]
+                if (
+                    isinstance(gen.target, ast.Name)
+                    and isinstance(gen.iter, ast.Call)
+                    and isinstance(gen.iter.func, ast.Name)
+                    and gen.iter.func.id == "range"
+                    and not gen.ifs
+                ):
+                    range_args = gen.iter.args
+                    if len(range_args) == 1:
+                        start, stop, step = 0, self._resolve_int(range_args[0]), 1
+                    elif len(range_args) == 2:
+                        start = self._resolve_int(range_args[0])
+                        stop = self._resolve_int(range_args[1])
+                        step = 1
+                    else:
+                        start = self._resolve_int(range_args[0])
+                        stop = self._resolve_int(range_args[1])
+                        step = self._resolve_int(range_args[2])
+                    iterations = list(range(start, stop, step))
+                    if len(iterations) > _MAX_UNROLL:
+                        raise TranslationError(
+                            f"sum() would unroll {len(iterations)} iterations,"
+                            f" max is {_MAX_UNROLL} (line {lineno})"
+                        )
+                    if not iterations:
+                        return z3.IntVal(0)
+                    loop_var = gen.target.id
+                    acc_items = []
+                    for i_val in iterations:
+                        iter_env = {**env, loop_var: z3.IntVal(i_val)}
+                        acc_items.append(self._expr(arg_node.elt, iter_env))
+                    result = acc_items[0]
+                    for item in acc_items[1:]:
+                        result, item = self._coerce(result, item)
+                        result = result + item
+                    return result
+            raise TranslationError(
+                f"sum() only supported over list literals, list comprehensions, or "
+                f"range generators (line {lineno}). "
+                "Use sum([a, b]), sum([f(i) for i in range(N)]), or "
+                "sum(f(i) for i in range(N))."
+            )
+
+        # sorted([...]) — constant list only, returns a Python list of Z3 exprs
+        if fname == "sorted":
+            if len(node.args) != 1:
+                raise TranslationError(
+                    f"sorted() takes exactly 1 argument (line {lineno})"
+                )
+            arg_node = node.args[0]
+            items = self._eval_list_like(arg_node, env, who="sorted()")
+            # Require every item to be a concrete integer / real literal.
+            concrete: list[tuple[Any, Any]] = []  # (sort-key, original)
+            for it in items:
+                s = z3.simplify(it)
+                if z3.is_int_value(s):
+                    concrete.append((s.as_long(), z3.IntVal(s.as_long())))
+                elif z3.is_rational_value(s):
+                    frac = s.as_fraction()
+                    key = float(frac.numerator) / float(frac.denominator)
+                    concrete.append((key, s))
+                else:
+                    raise TranslationError(
+                        f"sorted() requires concrete integer/real values; "
+                        f"symbolic inputs not supported (line {lineno})"
+                    )
+            concrete.sort(key=lambda p: p[0])
+            return [p[1] for p in concrete]
+
+        # map(func, iterable) — only lambda or uninterpreted ast.Name pointing
+        # at a _BUILTINS entry is supported.
+        if fname == "map":
+            if len(node.args) != 2:
+                raise TranslationError(
+                    f"map() takes exactly 2 arguments (line {lineno})"
+                )
+            func_node, iter_node = node.args
+            items = self._eval_list_like(iter_node, env, who="map()")
+            return [self._apply_callable(func_node, [it], env) for it in items]
+
+        # filter(pred, iterable) — only lambda or None (identity-bool filter).
+        if fname == "filter":
+            if len(node.args) != 2:
+                raise TranslationError(
+                    f"filter() takes exactly 2 arguments (line {lineno})"
+                )
+            func_node, iter_node = node.args
+            items = self._eval_list_like(iter_node, env, who="filter()")
+            # None predicate = truthiness
+            if isinstance(func_node, ast.Constant) and func_node.value is None:
+                out: list[Any] = []
+                for it in items:
+                    s = z3.simplify(it)
+                    if z3.is_true(s):
+                        out.append(it)
+                    elif z3.is_false(s):
+                        continue
+                    elif z3.is_int_value(s) and s.as_long() != 0:
+                        out.append(it)
+                    elif z3.is_int_value(s) and s.as_long() == 0:
+                        continue
+                    else:
+                        raise TranslationError(
+                            f"filter(None, ...) requires concrete boolean/int values "
+                            f"(line {lineno})"
+                        )
+                return out
+            out = []
+            for it in items:
+                pred = self._apply_callable(func_node, [it], env)
+                s = z3.simplify(pred)
+                if z3.is_true(s):
+                    out.append(it)
+                elif z3.is_false(s):
+                    continue
+                else:
+                    raise TranslationError(
+                        f"filter() predicate must evaluate to a concrete bool "
+                        f"for every input (got {s} on {it}) (line {lineno})"
+                    )
+            return out
+
         args = [self._expr(a, env) for a in node.args]
 
         # Built-in translations

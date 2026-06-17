@@ -180,7 +180,7 @@ class TestAsyncFunctions:
                 return x
             return 0.0
 
-        result = asyncio.get_event_loop().run_until_complete(async_relu(-3.0))
+        result = asyncio.run(async_relu(-3.0))
         assert result == 0.0
 
 

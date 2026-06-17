@@ -179,7 +179,7 @@ print()
 print("=== 7. Convenience aliases ===")
 
 try:
-    from provably.types import NonNegative, Positive, UnitInterval  # type: ignore[attr-defined]
+    from provably.types import Positive, UnitInterval  # type: ignore[attr-defined]
 
     @verified
     def scale_positive(x: Annotated[float, Positive]) -> Annotated[float, Positive]:
