@@ -2072,10 +2072,6 @@ class TestTranslatorMatchAndWhile:
 
     def test_match_statement_if_python_310_plus(self) -> None:
         """Cover match/case translation (Python 3.10+)."""
-        import sys
-
-        if sys.version_info < (3, 10):
-            pytest.skip("match requires Python 3.10+")
 
         from provably.engine import Status, verify_function
 

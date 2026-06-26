@@ -24,7 +24,7 @@ def _tautology_cert():
     """A function whose body is always true → VERIFIED, pure-Bool VC."""
 
     def f(a: bool) -> bool:
-        return a or not a
+        return a or not a  # noqa: SIM221 - tautology is the test payload for the verifier
 
     return verify_function(f, post=lambda a, result: result)
 
