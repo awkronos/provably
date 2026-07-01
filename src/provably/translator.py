@@ -1109,20 +1109,27 @@ class Translator:
                 f"(line {lineno})"
             )
         range_args = gen.iter.args
-        if len(range_args) == 1:
-            start, stop, step = 0, self._resolve_int(range_args[0]), 1
-        elif len(range_args) == 2:
-            start = self._resolve_int(range_args[0])
-            stop = self._resolve_int(range_args[1])
-            step = 1
-        elif len(range_args) == 3:
-            start = self._resolve_int(range_args[0])
-            stop = self._resolve_int(range_args[1])
-            step = self._resolve_int(range_args[2])
-        else:
+        if not 1 <= len(range_args) <= 3:
+            raise TranslationError(f"range() takes 1-3 args (line {lineno})")
+        try:
+            if len(range_args) == 1:
+                start, stop, step = 0, self._resolve_int(range_args[0]), 1
+            elif len(range_args) == 2:
+                start = self._resolve_int(range_args[0])
+                stop = self._resolve_int(range_args[1])
+                step = 1
+            else:  # 3 args
+                start = self._resolve_int(range_args[0])
+                stop = self._resolve_int(range_args[1])
+                step = self._resolve_int(range_args[2])
+        except TranslationError:
+            # A non-constant / symbolic range bound makes this an unsupported
+            # list comprehension. Surface it as a comprehension error so
+            # callers can detect it (rather than a low-level range() message).
             raise TranslationError(
-                f"range() takes 1-3 args (line {lineno})"
-            )
+                f"List comprehension over range() requires constant integer "
+                f"bounds (line {lineno})"
+            ) from None
         if step == 0:
             raise TranslationError(f"range() step cannot be zero (line {lineno})")
         iterations = list(range(start, stop, step))

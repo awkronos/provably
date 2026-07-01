@@ -932,7 +932,12 @@ def _z3_val_to_python(val: Any) -> int | float | bool | str:
             return False
     except (AttributeError, ValueError, ArithmeticError, OverflowError):
         pass
-    return str(val)
+    try:
+        return str(val)
+    except Exception:
+        # val's own __repr__/__str__ is broken — fall back to a type label so
+        # the caller still gets a plain string (never propagates).
+        return f"<unrepresentable {type(val).__name__}>"
 
 
 def _resolve_closure_vars(

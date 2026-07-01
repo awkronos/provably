@@ -106,6 +106,12 @@ mypy_path = "src"
 module = "z3.*"
 ignore_missing_imports = true
 
+# orjson is an optional accelerator (the `speed` extra); the import is guarded
+# at runtime by try/except, so don't fail typecheck when it isn't installed.
+[[tool.mypy.overrides]]
+module = "orjson"
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 # Pytest
 # ---------------------------------------------------------------------------

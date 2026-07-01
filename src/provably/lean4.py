@@ -237,7 +237,10 @@ def _func_body_to_lean(func_ast: ast.FunctionDef, env: dict[str, str]) -> str:
         ):
             continue
         elif isinstance(stmt, ast.Pass):
-            lines.append("skip")
+            # `pass` is a no-op; the body is term-style (let-chain + final
+            # expression), so it contributes nothing. A pass-only body falls
+            # through to the `sorry` placeholder below.
+            continue
     return "\n  ".join(lines) if lines else "sorry"
 
 
