@@ -28,4 +28,6 @@ jobs:
       - name: Type check
         run: mypy src/provably
       - name: Test
-        run: pytest tests/
+        # Coverage floor = current line coverage (93%) rounded down to the
+        # nearest 5%.
+        run: pytest --cov=provably --cov-fail-under=90 tests/
