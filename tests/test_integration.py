@@ -109,7 +109,10 @@ class TestExplicitContracts:
 
 class TestStrictMode:
     def test_strict_raises_on_counterexample(self) -> None:
-        with pytest.raises(VerificationError) as exc_info:
+        with (
+            pytest.warns(DeprecationWarning, match="strict"),
+            pytest.raises(VerificationError) as exc_info,
+        ):
 
             @verified(strict=True, post=lambda x, result: result > 0)
             def negate(x: float) -> float:
@@ -119,7 +122,10 @@ class TestStrictMode:
 
     def test_raise_on_failure_alias(self) -> None:
         """strict=True is the raise_on_failure pattern — test it works end-to-end."""
-        with pytest.raises(VerificationError) as exc_info:
+        with (
+            pytest.warns(DeprecationWarning, match="strict"),
+            pytest.raises(VerificationError) as exc_info,
+        ):
 
             @verified(strict=True, post=lambda x, r: r == x + 2)
             def inc_wrong(x: float) -> float:
@@ -132,12 +138,13 @@ class TestStrictMode:
 
     def test_strict_does_not_raise_on_verified(self) -> None:
         """strict=True should not raise when the proof succeeds."""
+        with pytest.warns(DeprecationWarning, match="strict"):
 
-        @verified(strict=True, post=lambda x, r: r >= 0)
-        def safe_abs(x: float) -> float:
-            if x >= 0:
-                return x
-            return -x
+            @verified(strict=True, post=lambda x, r: r >= 0)
+            def safe_abs(x: float) -> float:
+                if x >= 0:
+                    return x
+                return -x
 
         assert safe_abs.__proof__.verified
         assert safe_abs(-5) == 5

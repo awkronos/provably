@@ -27,7 +27,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.timeout(30)
+pytestmark = [
+    pytest.mark.timeout(30),
+    # These tests intentionally call strategy.example() to sample generated
+    # strategies outside @given; hypothesis warns about that usage by design.
+    pytest.mark.filterwarnings("ignore::hypothesis.errors.NonInteractiveExampleWarning"),
+]
 
 
 # ---------------------------------------------------------------------------

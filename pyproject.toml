@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Quality Assurance",
     "Typing :: Typed",
@@ -48,9 +49,6 @@ docs = [
     "mkdocstrings[python]>=0.24",
     "mkdocs-autorefs>=1.0",
 ]
-
-[project.scripts]
-provably-bench = "scripts.optimal_bench:run"
 
 [project.entry-points."pytest11"]
 provably = "provably.pytest_plugin"

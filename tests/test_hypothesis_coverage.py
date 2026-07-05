@@ -19,6 +19,12 @@ from provably.hypothesis import (
 )
 from provably.types import Between, Ge, Gt, Le, Lt, NotEq
 
+pytestmark = pytest.mark.filterwarnings(
+    # These tests intentionally call strategy.example() to sample generated
+    # strategies outside @given; hypothesis warns about that usage by design.
+    "ignore::hypothesis.errors.NonInteractiveExampleWarning"
+)
+
 
 class TestNestedAnnotated:
     def test_nested_annotated_int(self) -> None:

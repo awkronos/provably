@@ -8,6 +8,17 @@ import pytest
 pytest_plugins = ["pytester"]
 
 
+@pytest.fixture(autouse=True)
+def _pin_asyncio_fixture_loop_scope(pytester: pytest.Pytester) -> None:
+    """Give nested pytester runs an explicit asyncio fixture loop scope.
+
+    pytester executes in a fresh tmp dir with no config file, so pytest-asyncio
+    emits its "asyncio_default_fixture_loop_scope is unset" deprecation warning
+    inside every nested run. Pin it the same way the real pyproject.toml does.
+    """
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function\n")
+
+
 # ---------------------------------------------------------------------------
 # --provably-report flag
 # ---------------------------------------------------------------------------

@@ -1103,10 +1103,11 @@ class TestDecoratorsLines420_421_RuntimeWrapNParams:
 
         dec_mod.inspect.signature = patched_sig  # type: ignore[attr-defined]
         try:
+            with pytest.warns(UserWarning, match="may not be called correctly"):
 
-            @runtime_checked(pre=lambda x: x >= 0)
-            def f(x: float) -> float:
-                return x
+                @runtime_checked(pre=lambda x: x >= 0)
+                def f(x: float) -> float:
+                    return x
 
             # Should not crash
             assert f(5) == 5
