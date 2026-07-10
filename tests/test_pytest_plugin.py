@@ -19,6 +19,31 @@ def _pin_asyncio_fixture_loop_scope(pytester: pytest.Pytester) -> None:
     pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function\n")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_nested_pytest_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep nested ``pytester.runpytest()`` sessions hermetic.
+
+    By default a nested pytest session re-scans every installed
+    distribution's ``pytest11`` entry points, including unrelated plugins
+    from other projects that happen to share this interpreter (e.g.
+    ``pytest-playwright`` on a shared/self-hosted CI Python). That plugin
+    installs a ``pytest_runtest_call`` hookwrapper around
+    ``playwright._impl._assertions._soft_scope()``, which is a
+    process-global, non-reentrant context manager
+    (``assert _soft_errors is None, "nested soft assertion scopes are not
+    supported"``). When the *outer* test here is itself running inside that
+    hookwrapper and starts a nested pytest session that also autoloads
+    ``pytest-playwright``, the nested session's attempt to enter
+    ``_soft_scope()`` again collides with the still-open outer scope and
+    fails every test in the nested run.
+
+    Disabling autoload avoids that (and any similar) ambient-plugin
+    collision; the ``provably`` plugin under test is re-added explicitly via
+    ``-p`` in each ``runpytest()`` call below.
+    """
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+
+
 # ---------------------------------------------------------------------------
 # --provably-report flag
 # ---------------------------------------------------------------------------
@@ -41,7 +66,7 @@ class TestProvablyReportFlag:
                 assert double(3.0) == 6.0
             """
         )
-        result = pytester.runpytest("--provably-report", "-v")
+        result = pytester.runpytest("-p", "provably.pytest_plugin", "--provably-report", "-v")
         result.assert_outcomes(passed=1)
         # The report section header should appear
         result.stdout.fnmatch_lines(["*provably proof certificate report*"])
@@ -64,7 +89,7 @@ class TestProvablyReportFlag:
                 assert triple(2.0) == 6.0
             """
         )
-        result = pytester.runpytest("-v")
+        result = pytester.runpytest("-p", "provably.pytest_plugin", "-v")
         result.assert_outcomes(passed=1)
         # Report header should NOT appear
         assert "provably proof certificate report" not in result.stdout.str()
@@ -77,7 +102,7 @@ class TestProvablyReportFlag:
                 assert 1 + 1 == 2
             """
         )
-        result = pytester.runpytest("--provably-report", "-v")
+        result = pytester.runpytest("-p", "provably.pytest_plugin", "--provably-report", "-v")
         result.assert_outcomes(passed=1)
         result.stdout.fnmatch_lines(["*provably: no @verified functions found*"])
 
@@ -109,7 +134,7 @@ class TestProvenMarker:
                 assert 2 + 2 == 4
             """
         )
-        result = pytester.runpytest("-v")
+        result = pytester.runpytest("-p", "provably.pytest_plugin", "-v")
         result.assert_outcomes(passed=2)
         result.stdout.fnmatch_lines(["*test_nonneg_double_is_verified*PASSED*"])
 
@@ -127,7 +152,7 @@ class TestProvenMarker:
                 assert True
             """
         )
-        result = pytester.runpytest("--provably", "-v")
+        result = pytester.runpytest("-p", "provably.pytest_plugin", "--provably", "-v")
         result.assert_outcomes(passed=1)
         result.stdout.fnmatch_lines(["*test_proven_one*PASSED*"])
         assert "test_not_proven" not in result.stdout.str()
@@ -143,5 +168,7 @@ class TestProvenMarker:
                 assert True
             """
         )
-        result = pytester.runpytest("-v", "-W", "error::pytest.PytestUnknownMarkWarning")
+        result = pytester.runpytest(
+            "-p", "provably.pytest_plugin", "-v", "-W", "error::pytest.PytestUnknownMarkWarning"
+        )
         result.assert_outcomes(passed=1)
