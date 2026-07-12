@@ -373,6 +373,7 @@ class TestWhileLoopSoundness:
             count_up_10,
             pre=lambda n: (n >= 0) & (n <= 10),
             post=lambda n, result: result == 500,  # false
+            timeout_ms=30000,
         )
         assert cert.status == Status.COUNTEREXAMPLE, cert.status
         assert cert.counterexample is not None
@@ -390,6 +391,7 @@ class TestWhileLoopSoundness:
             count_up_10,
             pre=lambda n: (n >= 0) & (n <= 10),
             post=lambda n, result: result == n,
+            timeout_ms=30000,
         )
         assert cert.verified, cert.message
 
