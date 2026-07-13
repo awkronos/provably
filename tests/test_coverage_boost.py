@@ -323,7 +323,8 @@ class TestLean4ModuleLevel:
         from provably.lean4 import _expr_to_lean
 
         node = ast.Constant(value="hello")
-        assert _expr_to_lean(node) == "hello"
+        with pytest.raises(ValueError, match="Unsupported Lean4 constant"):
+            _expr_to_lean(node)
 
     def test_expr_to_lean_name_from_env(self) -> None:
         from provably.lean4 import _expr_to_lean
@@ -340,14 +341,14 @@ class TestLean4ModuleLevel:
     def test_expr_to_lean_binop_unsupported(self) -> None:
         from provably.lean4 import _expr_to_lean
 
-        # MatMult is not in op_map, so should use "?"
+        # MatMult is outside the supported arithmetic subset.
         node = ast.BinOp(
             left=ast.Name(id="a"),
             op=ast.MatMult(),
             right=ast.Name(id="b"),
         )
-        out = _expr_to_lean(node)
-        assert "?" in out
+        with pytest.raises(ValueError, match="MatMult"):
+            _expr_to_lean(node)
 
     def test_expr_to_lean_compare_multiple_ops(self) -> None:
         from provably.lean4 import _expr_to_lean
@@ -376,9 +377,8 @@ class TestLean4ModuleLevel:
         from provably.lean4 import _expr_to_lean
 
         node = ast.UnaryOp(op=ast.UAdd(), operand=ast.Name(id="x"))
-        # UAdd is not USub/Not so falls through to return operand
-        out = _expr_to_lean(node)
-        assert out == "x"
+        with pytest.raises(ValueError, match="UAdd"):
+            _expr_to_lean(node)
 
     def test_expr_to_lean_ifexp(self) -> None:
         from provably.lean4 import _expr_to_lean
@@ -394,7 +394,8 @@ class TestLean4ModuleLevel:
     def test_expr_to_lean_attribute_call(self) -> None:
         from provably.lean4 import _expr_to_lean
 
-        # Call with ast.Attribute as func (e.g. obj.method()) → uses func.attr
+        # Attribute calls are rejected: translating only the attribute name
+        # could silently substitute a different Lean function.
         node = ast.Call(
             func=ast.Attribute(
                 value=ast.Name(id="math"),
@@ -404,32 +405,33 @@ class TestLean4ModuleLevel:
             args=[ast.Name(id="x")],
             keywords=[],
         )
-        out = _expr_to_lean(node)
-        assert "sqrt" in out
+        with pytest.raises(ValueError, match="Unsupported Lean4 call"):
+            _expr_to_lean(node)
 
     def test_expr_to_lean_call_min_multi(self) -> None:
         from provably.lean4 import _expr_to_lean
 
-        # min with 3 args hits the else branch
+        # Lean min is binary; accepting arbitrary arity would generate an
+        # ill-typed or semantically different term.
         node = ast.Call(
             func=ast.Name(id="min"),
             args=[ast.Name(id="a"), ast.Name(id="b"), ast.Name(id="c")],
             keywords=[],
         )
-        out = _expr_to_lean(node)
-        assert "min" in out
+        with pytest.raises(ValueError, match="expects 2"):
+            _expr_to_lean(node)
 
     def test_expr_to_lean_call_abs_multi(self) -> None:
         from provably.lean4 import _expr_to_lean
 
-        # abs with 2 args hits else branch
+        # Lean abs is unary.
         node = ast.Call(
             func=ast.Name(id="abs"),
             args=[ast.Name(id="a"), ast.Name(id="b")],
             keywords=[],
         )
-        out = _expr_to_lean(node)
-        assert "abs" in out
+        with pytest.raises(ValueError, match="expects 1"):
+            _expr_to_lean(node)
 
     def test_if_to_lean_no_orelse(self) -> None:
         from provably.lean4 import _if_to_lean
@@ -439,8 +441,8 @@ class TestLean4ModuleLevel:
             body=[ast.Return(value=ast.Constant(value=1))],
             orelse=[],
         )
-        out = _if_to_lean(stmt, {})
-        assert "if" in out and "sorry" in out
+        with pytest.raises(ValueError, match="every control-flow path"):
+            _if_to_lean(stmt, {})
 
     def test_if_to_lean_both_branches(self) -> None:
         from provably.lean4 import _if_to_lean
@@ -461,8 +463,8 @@ class TestLean4ModuleLevel:
             body=[ast.Pass()],
             orelse=[ast.Return(value=ast.Constant(value=0))],
         )
-        out = _if_to_lean(stmt, {})
-        assert "sorry" in out
+        with pytest.raises(ValueError, match="every control-flow path"):
+            _if_to_lean(stmt, {})
 
     def test_if_to_lean_neither_returns(self) -> None:
         from provably.lean4 import _if_to_lean
@@ -472,8 +474,8 @@ class TestLean4ModuleLevel:
             body=[ast.Pass()],
             orelse=[],
         )
-        out = _if_to_lean(stmt, {})
-        assert out == "sorry"
+        with pytest.raises(ValueError, match="every control-flow path"):
+            _if_to_lean(stmt, {})
 
     def test_func_body_docstring_skipped(self) -> None:
         from provably.lean4 import generate_lean4_theorem
@@ -489,8 +491,8 @@ class TestLean4ModuleLevel:
         tree = ast.parse(code)
         func = tree.body[0]
         assert isinstance(func, ast.FunctionDef)
-        out = _func_body_to_lean(func, {})
-        assert out == "sorry"
+        with pytest.raises(ValueError, match="every control-flow path"):
+            _func_body_to_lean(func, {})
 
     def test_generate_lean4_theorem_no_post(self) -> None:
         from provably.lean4 import generate_lean4_theorem
@@ -541,7 +543,7 @@ class TestLean4ModuleLevel:
 
         s2 = "Or(x >= 0, x <= 1)"
         out2 = _z3_str_to_lean(s2, ["x"])
-        assert "∧" in out2
+        assert "∨" in out2
 
 
 class TestLean4VerifyPaths:
@@ -612,10 +614,12 @@ class TestLean4VerifyPaths:
 
         # A class — its source parses as ClassDef, not FunctionDef
         class MyClass:
-            assert True, "pass marker replaced with explicit no-op assertion: test_coverage_boost.py:615"
+            assert True, (
+                "pass marker replaced with explicit no-op assertion: test_coverage_boost.py:615"
+            )
 
-        out = export_lean4(MyClass)
-        assert "Error" in out or "sorry" in out.lower()
+        with pytest.raises(ValueError, match="not a function definition"):
+            export_lean4(MyClass)
 
 
 # ===========================================================================
@@ -1917,7 +1921,9 @@ class TestLean4WithMockedSubprocess:
 
         monkeypatch.setattr(m, "HAS_LEAN4", True)
 
-        mock_result = self._make_subprocess_result(0, "", "")
+        mock_result = self._make_subprocess_result(
+            0, "'f_verified' does not depend on any axioms", ""
+        )
         monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
 
         def f(x: float) -> float:

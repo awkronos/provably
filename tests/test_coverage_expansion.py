@@ -415,8 +415,8 @@ class TestLean4Coverage:
         from provably.lean4 import _expr_to_lean
 
         node = ast.ListComp(elt=ast.Name(id="x"), generators=[])
-        result = _expr_to_lean(node)
-        assert "sorry" in result
+        with pytest.raises(ValueError, match="Unsupported Lean4 expression"):
+            _expr_to_lean(node)
 
     def test_if_to_lean_elif_chain(self) -> None:
         from provably.lean4 import _if_to_lean
@@ -445,8 +445,8 @@ if x < 0:
 """
         tree = ast.parse(textwrap.dedent(src))
         if_stmt = tree.body[0]
-        result = _if_to_lean(if_stmt, {"x": "x"})
-        assert "sorry" in result  # Missing else gets sorry
+        with pytest.raises(ValueError, match="every control-flow path"):
+            _if_to_lean(if_stmt, {"x": "x"})
 
     def test_func_body_augassign(self) -> None:
         from provably.lean4 import _func_body_to_lean
@@ -513,15 +513,15 @@ def f(x):
     def test_generate_theorem_not_function_def(self) -> None:
         from provably.lean4 import generate_lean4_theorem
 
-        lean = generate_lean4_theorem(
-            func_name="test",
-            param_names=[],
-            param_types={},
-            pre_str=None,
-            post_str=None,
-            source="x = 42",
-        )
-        assert "Error" in lean or "sorry" in lean
+        with pytest.raises(ValueError, match="not a function definition"):
+            generate_lean4_theorem(
+                func_name="test",
+                param_names=[],
+                param_types={},
+                pre_str=None,
+                post_str=None,
+                source="x = 42",
+            )
 
 
 # =============================================================================

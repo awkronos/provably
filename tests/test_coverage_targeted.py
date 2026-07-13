@@ -391,19 +391,18 @@ class TestLean4ExprCorners:
         assert "max" in _expr_to_lean(node2)
 
     def test_expr_to_lean_unsupported_node(self) -> None:
-        """Unsupported AST nodes emit 'sorry' with a comment."""
+        """Unsupported AST nodes are rejected instead of admitted."""
         from provably.lean4 import _expr_to_lean
 
-        # ast.Lambda is not handled → should return sorry comment
+        # ast.Lambda is outside the supported expression subset.
         node = ast.Lambda(
             args=ast.arguments(
                 posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]
             ),
             body=ast.Constant(value=0),
         )
-        out = _expr_to_lean(node)
-        assert "sorry" in out
-        assert "unsupported" in out
+        with pytest.raises(ValueError, match="Unsupported Lean4 expression"):
+            _expr_to_lean(node)
 
 
 class TestLean4FuncBody:
@@ -422,8 +421,8 @@ class TestLean4FuncBody:
         )
         assert "let x" in out
 
-    def test_aug_assign_mult_mod_div_sub(self) -> None:
-        """Exercise each aug-assign op map entry."""
+    def test_aug_assign_floor_div_rejected(self) -> None:
+        """Floor division is rejected until Python/Lean semantics are aligned."""
         from provably.lean4 import generate_lean4_theorem
 
         source = (
@@ -434,16 +433,15 @@ class TestLean4FuncBody:
             "    x //= 3\n"
             "    return x\n"
         )
-        out = generate_lean4_theorem(
-            func_name="g",
-            param_names=["x"],
-            param_types={"x": int},
-            pre_str=None,
-            post_str=None,
-            source=source,
-        )
-        # All four aug-assigns produce `let x :=`
-        assert out.count("let x") >= 4
+        with pytest.raises(ValueError, match="FloorDiv"):
+            generate_lean4_theorem(
+                func_name="g",
+                param_names=["x"],
+                param_types={"x": int},
+                pre_str=None,
+                post_str=None,
+                source=source,
+            )
 
     def test_plain_assign_translated(self) -> None:
         from provably.lean4 import generate_lean4_theorem
@@ -473,38 +471,37 @@ class TestLean4FuncBody:
         )
         assert "let y" in out
 
-    def test_nonfunction_toplevel_returns_error_comment(self) -> None:
-        """generate_lean4_theorem with a non-function source returns an error comment."""
+    def test_nonfunction_toplevel_rejected(self) -> None:
+        """generate_lean4_theorem rejects a non-function source."""
         from provably.lean4 import generate_lean4_theorem
 
         # The top-level statement is just an expression, not a FunctionDef.
-        out = generate_lean4_theorem(
-            func_name="x",
-            param_names=[],
-            param_types={},
-            pre_str=None,
-            post_str=None,
-            source="x = 1\n",
-        )
-        assert "Error" in out
+        with pytest.raises(ValueError, match="not a function definition"):
+            generate_lean4_theorem(
+                func_name="x",
+                param_names=[],
+                param_types={},
+                pre_str=None,
+                post_str=None,
+                source="x = 1\n",
+            )
 
-    def test_if_no_then_return_emits_sorry_branch(self) -> None:
+    def test_if_no_then_return_rejected(self) -> None:
         from provably.lean4 import generate_lean4_theorem
 
         # if with no explicit return in then-branch
         source = (
             "def p(x: int) -> int:\n    if x >= 0:\n        y = 1\n    else:\n        return -x\n"
         )
-        out = generate_lean4_theorem(
-            func_name="p",
-            param_names=["x"],
-            param_types={"x": int},
-            pre_str=None,
-            post_str=None,
-            source=source,
-        )
-        # Either sorry appears (for the missing then-return) or a let form.
-        assert "p_impl" in out
+        with pytest.raises(ValueError, match="every control-flow path"):
+            generate_lean4_theorem(
+                func_name="p",
+                param_names=["x"],
+                param_types={"x": int},
+                pre_str=None,
+                post_str=None,
+                source=source,
+            )
 
 
 class TestZ3StrToLeanNot:
@@ -648,8 +645,8 @@ class TestExportLean4EdgeCases:
         assert written == code
         assert "double_impl" in written
 
-    def test_export_non_function_error_comment(self) -> None:
-        """Calling export_lean4 on a class returns an error comment."""
+    def test_export_non_function_rejected(self) -> None:
+        """Calling export_lean4 on a class fails closed."""
         from provably.lean4 import export_lean4
 
         # A class, not a function. inspect.getsource returns the class source,
@@ -658,8 +655,8 @@ class TestExportLean4EdgeCases:
             def __init__(self) -> None:
                 self.initialized = True
 
-        out = export_lean4(C)
-        assert "Error" in out or "sorry" in out.lower()
+        with pytest.raises(ValueError, match="not a function definition"):
+            export_lean4(C)
 
 
 # ---------------------------------------------------------------------------

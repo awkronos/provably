@@ -9,6 +9,7 @@ from provably.lean4 import (
     LEAN4_VERSION,
     _expr_to_lean,
     _z3_str_to_lean,
+    check_lean4_proof,
     export_lean4,
     generate_lean4_theorem,
     verify_with_lean4,
@@ -271,3 +272,90 @@ class TestLean4CoreMode:
                 assert reported.issubset(allowed), f"Unexpected axioms: {reported - allowed}"
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+
+class TestLean4FailClosed:
+    """Regression checks for admitted or missing proof obligations."""
+
+    def test_sorry_placeholder_is_rejected(self) -> None:
+        ok, output = check_lean4_proof("theorem fake : False := by sorry\n", theorem_name="fake")
+        assert ok is False
+        assert "placeholder" in output
+
+    def test_no_postcondition_never_verifies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from provably import lean4 as lean4_module
+        from provably.engine import Status
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+
+        def identity(x: int) -> int:
+            return x
+
+        certificate = lean4_module.verify_with_lean4(identity)
+        assert certificate.status == Status.SKIPPED
+        assert certificate.verified is False
+        assert "postcondition" in certificate.message
+
+    def test_nonsymbolic_postcondition_is_translation_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from provably import lean4 as lean4_module
+        from provably.engine import Status
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+
+        def identity(x: int) -> int:
+            return x
+
+        certificate = lean4_module.verify_with_lean4(identity, post=lambda x, result: True)
+        assert certificate.status == Status.TRANSLATION_ERROR
+        assert certificate.verified is False
+
+    def test_fallthrough_return_is_total_without_placeholder(self) -> None:
+        source = (
+            "def clamp(x: int, lo: int, hi: int) -> int:\n"
+            "    if x < lo:\n"
+            "        return lo\n"
+            "    elif x > hi:\n"
+            "        return hi\n"
+            "    return x\n"
+        )
+        lean = generate_lean4_theorem(
+            "clamp",
+            ["x", "lo", "hi"],
+            {"x": int, "lo": int, "hi": int},
+            "lo ≤ hi",
+            "lo ≤ clamp_impl x lo hi ∧ clamp_impl x lo hi ≤ hi",
+            source,
+        )
+        assert "else sorry" not in lean
+        assert ":= sorry" not in lean
+        assert "if x < lo then" in lean
+        assert "if x > hi then" in lean
+
+    def test_export_rejects_pass_only_body(self) -> None:
+        def incomplete(x: int) -> int:
+            pass
+
+        with pytest.raises(ValueError, match="every control-flow path"):
+            export_lean4(incomplete, post=lambda x, result: result == x)
+
+    def test_axiom_audit_rejects_custom_axiom(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import subprocess
+
+        from provably import lean4 as lean4_module
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+        result = subprocess.CompletedProcess(
+            args=["lean"],
+            returncode=0,
+            stdout="'checked' depends on axioms: [customTrust]\n",
+            stderr="",
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
+        ok, output = lean4_module.check_lean4_proof(
+            "theorem checked : True := by trivial\n",
+            theorem_name="checked",
+        )
+        assert ok is False
+        assert "disallowed axioms" in output

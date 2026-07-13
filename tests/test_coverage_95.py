@@ -42,6 +42,7 @@ pytestmark = [
 
 def _z3():
     import z3
+
     return z3
 
 
@@ -49,12 +50,14 @@ def _z3():
 # from the function's __globals__ even with `from __future__ import annotations`)
 class _BadParamMarker:
     """Callable refinement marker that raises TypeError — for engine error-path tests."""
+
     def __call__(self, var: Any) -> Any:
         raise TypeError("bad refinement")
 
 
 class _BadReturnMarker:
     """Callable refinement marker that raises TypeError — for return-type error-path tests."""
+
     def __call__(self, var: Any) -> Any:
         raise TypeError("bad return refinement")
 
@@ -69,17 +72,20 @@ class TestSelfProofRuntimeCalls:
 
     def test_bool_cast_test_true_branch(self) -> None:
         from provably._self_proof import bool_cast_test
+
         result = bool_cast_test(2.0)  # x >= 1 → return 1 (line 204-205)
         assert result == 1
 
     def test_bool_cast_test_false_branch(self) -> None:
         from provably._self_proof import bool_cast_test
+
         result = bool_cast_test(0.5)  # x < 1 → return 0 (line 206-207)
         assert result == 0
 
     def test_clamp_post_lambda_called(self) -> None:
         """Call _clamp_post directly to cover line 59."""
         from provably._self_proof import clamp
+
         # Call the function at runtime to cover its postcondition lambda
         result = clamp(5.0, 0.0, 10.0)  # in range
         assert result == 5.0
@@ -91,6 +97,7 @@ class TestSelfProofRuntimeCalls:
     def test_max_of_abs_post_lambda_called(self) -> None:
         """Call max_of_abs directly to cover line 132."""
         from provably._self_proof import max_of_abs
+
         result = max_of_abs(3.0, 4.0)
         assert result >= 0
         result2 = max_of_abs(-5.0, 2.0)
@@ -109,43 +116,51 @@ class TestTypesDefLines:
     def test_python_type_to_z3_sort_int(self) -> None:
         z3 = _z3()
         from provably.types import python_type_to_z3_sort
+
         assert python_type_to_z3_sort(int) == z3.IntSort()
 
     def test_python_type_to_z3_sort_float(self) -> None:
         z3 = _z3()
         from provably.types import python_type_to_z3_sort
+
         assert python_type_to_z3_sort(float) == z3.RealSort()
 
     def test_python_type_to_z3_sort_bool(self) -> None:
         z3 = _z3()
         from provably.types import python_type_to_z3_sort
+
         assert python_type_to_z3_sort(bool) == z3.BoolSort()
 
     def test_python_type_to_z3_sort_annotated(self) -> None:
         z3 = _z3()
         from provably.types import Ge, python_type_to_z3_sort
+
         assert python_type_to_z3_sort(Annotated[int, Ge(0)]) == z3.IntSort()
 
     def test_python_type_to_z3_sort_unknown(self) -> None:
         from provably.types import python_type_to_z3_sort
+
         with pytest.raises(TypeError, match="No Z3 sort"):
             python_type_to_z3_sort(str)
 
     def test_make_z3_var_int(self) -> None:
         z3 = _z3()
         from provably.types import make_z3_var
+
         v = make_z3_var("x", int)
         assert v.sort() == z3.IntSort()
 
     def test_make_z3_var_float(self) -> None:
         z3 = _z3()
         from provably.types import make_z3_var
+
         v = make_z3_var("y", float)
         assert v.sort() == z3.RealSort()
 
     def test_make_z3_var_bool(self) -> None:
         z3 = _z3()
         from provably.types import make_z3_var
+
         v = make_z3_var("b", bool)
         assert v.sort() == z3.BoolSort()
 
@@ -153,6 +168,7 @@ class TestTypesDefLines:
         """Cover line 208+ with a callable marker."""
         z3 = _z3()
         from provably.types import extract_refinements
+
         x = z3.Int("x")
         # callable marker that returns z3.BoolRef
         custom_pred = lambda v: v > z3.IntVal(5)
@@ -163,6 +179,7 @@ class TestTypesDefLines:
         """Callable that returns non-BoolRef should raise TypeError."""
         z3 = _z3()
         from provably.types import extract_refinements
+
         x = z3.Int("x")
         bad_pred = lambda v: 42  # returns int, not BoolRef
         with pytest.raises(TypeError):
@@ -172,9 +189,12 @@ class TestTypesDefLines:
         """Callable that raises should propagate."""
         z3 = _z3()
         from provably.types import extract_refinements
+
         x = z3.Int("x")
+
         def raising_pred(v: Any) -> Any:
             raise ValueError("intentional error")
+
         with pytest.raises((TypeError, ValueError)):
             extract_refinements(Annotated[int, raising_pred], x)
 
@@ -182,6 +202,7 @@ class TestTypesDefLines:
         """Non-Annotated type returns empty list."""
         z3 = _z3()
         from provably.types import extract_refinements
+
         x = z3.Int("x")
         assert extract_refinements(int, x) == []
 
@@ -197,6 +218,7 @@ class TestDecoratorsExceptionClasses:
     def test_verification_error_creation(self) -> None:
         from provably.decorators import VerificationError
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="test_fn",
             source_hash="abc123",
@@ -211,6 +233,7 @@ class TestDecoratorsExceptionClasses:
 
     def test_contract_violation_error_pre(self) -> None:
         from provably.decorators import ContractViolationError
+
         exc = ContractViolationError("pre", "my_func", (1, 2))
         assert exc.kind == "pre"
         assert exc.func_name == "my_func"
@@ -220,6 +243,7 @@ class TestDecoratorsExceptionClasses:
 
     def test_contract_violation_error_post(self) -> None:
         from provably.decorators import ContractViolationError
+
         exc = ContractViolationError("post", "my_func", (1, 2), result=42)
         assert exc.kind == "post"
         assert exc.result == 42
@@ -229,10 +253,13 @@ class TestDecoratorsExceptionClasses:
     def test_check_contract_arity_varargs(self) -> None:
         """_check_contract_arity returns early for *args functions."""
         from provably.decorators import _check_contract_arity
+
         def varargs_fn(*args: Any) -> None:
             return None
+
         # Should not warn (varargs accepted)
         import warnings
+
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             _check_contract_arity(varargs_fn, 3, "pre", "foo")
@@ -245,6 +272,7 @@ class TestDecoratorsExceptionClasses:
         import warnings
 
         from provably.decorators import _check_contract_arity
+
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             _check_contract_arity(len, 1, "pre", "foo")  # len takes 1 arg
@@ -254,6 +282,7 @@ class TestDecoratorsExceptionClasses:
         import logging
 
         from provably.decorators import ContractViolationError, _handle_violation
+
         exc = ContractViolationError("pre", "foo", (1,))
         with patch("provably.decorators.logger") as mock_logger:
             _handle_violation(exc, raise_on_failure=False)
@@ -262,6 +291,7 @@ class TestDecoratorsExceptionClasses:
     def test_handle_violation_raise_path(self) -> None:
         """_handle_violation with raise_on_failure=True should raise."""
         from provably.decorators import ContractViolationError, _handle_violation
+
         exc = ContractViolationError("post", "bar", (2,), result=0)
         with pytest.raises(ContractViolationError):
             _handle_violation(exc, raise_on_failure=True)
@@ -269,9 +299,11 @@ class TestDecoratorsExceptionClasses:
     def test_runtime_checked_no_raise_warning(self) -> None:
         """runtime_checked with raise_on_failure=False and violation logs warning."""
         from provably.decorators import runtime_checked
+
         @runtime_checked(pre=lambda x: x > 0, raise_on_failure=False)
         def positive_fn(x: float) -> float:
             return x
+
         with patch("provably.decorators.logger") as mock_logger:
             positive_fn(-1.0)  # violation — should warn not raise
             mock_logger.warning.assert_called_once()
@@ -288,6 +320,7 @@ class TestEngineDefLines:
     def test_configure_function(self) -> None:
         """Cover line 54 — configure() def and body."""
         from provably.engine import _config, configure
+
         old_timeout = _config.get("timeout_ms")
         configure(timeout_ms=9999)
         assert _config["timeout_ms"] == 9999
@@ -295,12 +328,14 @@ class TestEngineDefLines:
 
     def test_configure_unknown_key_raises(self) -> None:
         from provably.engine import configure
+
         with pytest.raises(ValueError, match="Unknown configure"):
             configure(nonexistent_key=42)
 
     def test_proof_certificate_str(self) -> None:
         """Cover lines 107-108 (class def) and 143 (__str__)."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="fn",
             source_hash="abc",
@@ -315,6 +350,7 @@ class TestEngineDefLines:
     def test_proof_certificate_verified_property(self) -> None:
         """Cover line 138-139 (verified property)."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="fn",
             source_hash="x",
@@ -335,6 +371,7 @@ class TestEngineDefLines:
     def test_proof_certificate_explain(self) -> None:
         """Cover line 153 (explain method)."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="fn",
             source_hash="x",
@@ -350,6 +387,7 @@ class TestEngineDefLines:
     def test_proof_certificate_to_prompt(self) -> None:
         """Cover line 186 (to_prompt method)."""
         from provably.engine import ProofCertificate, Status
+
         # VERIFIED
         cert = ProofCertificate(
             function_name="fn",
@@ -388,6 +426,7 @@ class TestEngineDefLines:
     def test_proof_certificate_to_json_from_json(self) -> None:
         """Cover lines 214, 250-251."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="fn",
             source_hash="abc123",
@@ -408,6 +447,7 @@ class TestEngineDefLines:
     def test_to_json_with_counterexample_non_serializable(self) -> None:
         """to_json coerces non-JSON-native counterexample values to str."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="fn",
             source_hash="x",
@@ -422,17 +462,20 @@ class TestEngineDefLines:
     def test_clear_cache(self) -> None:
         """Cover line 290 (clear_cache def)."""
         from provably.engine import clear_cache
+
         clear_cache()  # just run it
 
     def test_source_hash(self) -> None:
         """Cover line 299 (_source_hash)."""
         from provably.engine import _source_hash
+
         h = _source_hash("hello world")
         assert len(h) == 16
 
     def test_contract_sig_none(self) -> None:
         """Cover line 303 (_contract_sig with None)."""
         from provably.engine import _contract_sig
+
         assert _contract_sig(None) == "none"
 
     def test_contract_sig_empty_cell(self) -> None:
@@ -454,17 +497,21 @@ class TestEngineDefLines:
     def test_contract_sig_with_defaults(self) -> None:
         """Cover line 323-324 — function with defaults."""
         from provably.engine import _contract_sig
+
         def fn_with_default(x: int, y: int = 5) -> bool:
             return x > y
+
         sig = _contract_sig(fn_with_default)
         assert isinstance(sig, str)
 
     def test_contract_sig_non_function(self) -> None:
         """Cover line 326-327 (AttributeError path — non-lambda callable)."""
         from provably.engine import _contract_sig
+
         class MyCallable:
             def __call__(self, x: int) -> bool:
                 return x > 0
+
         # Classes without __code__ hit the AttributeError path
         # Actually MyCallable() has __code__ via __call__... let's use int itself
         sig = _contract_sig(42)  # type: ignore -- not a callable, triggers repr()
@@ -473,6 +520,7 @@ class TestEngineDefLines:
     def test_disk_cache_path_none(self) -> None:
         """Cover line 330-337 (_disk_cache_path with None cache_dir)."""
         from provably.engine import _config, _disk_cache_path
+
         old_dir = _config.get("cache_dir")
         _config["cache_dir"] = None
         result = _disk_cache_path("test_key")
@@ -482,6 +530,7 @@ class TestEngineDefLines:
     def test_load_from_disk_no_path(self) -> None:
         """Cover line 340-351 (_load_from_disk with None path)."""
         from provably.engine import _config, _load_from_disk
+
         old_dir = _config.get("cache_dir")
         _config["cache_dir"] = None
         result = _load_from_disk("nonexistent_key")
@@ -491,6 +540,7 @@ class TestEngineDefLines:
     def test_save_to_disk_no_path(self) -> None:
         """Cover line 354-364 (_save_to_disk with None path)."""
         from provably.engine import ProofCertificate, Status, _config, _save_to_disk
+
         cert = ProofCertificate(
             function_name="fn",
             source_hash="x",
@@ -506,14 +556,17 @@ class TestEngineDefLines:
     def test_validate_contract_arity_varargs(self) -> None:
         """Cover line 372+ (_validate_contract_arity with varargs)."""
         from provably.engine import _validate_contract_arity
+
         def fn(*args: Any) -> None:
             return None
+
         result = _validate_contract_arity(fn, 5, "pre", "test")
         assert result is None
 
     def test_validate_contract_arity_uninspectable(self) -> None:
         """_validate_contract_arity returns None for uninspectable callables."""
         from provably.engine import _validate_contract_arity
+
         # Use a mock that raises on signature
         with patch("provably.engine.inspect.signature", side_effect=ValueError("no sig")):
             result = _validate_contract_arity(lambda x: x, 1, "pre", "test")
@@ -522,8 +575,10 @@ class TestEngineDefLines:
     def test_verify_function_def_line(self) -> None:
         """Cover line 423 (verify_function def) and basic error paths."""
         from provably.engine import verify_function
+
         def simple_add(x: float, y: float) -> float:
             return x + y
+
         cert = verify_function(simple_add, post=lambda x, y, r: r == x + y)
         assert cert.verified
 
@@ -567,6 +622,7 @@ class TestEngineDefLines:
         """Cover line 709 (verify_module def)."""
         import provably._self_proof as sp_mod
         from provably.engine import verify_module
+
         results = verify_module(sp_mod)
         assert len(results) > 0
         assert all(hasattr(v, "status") for v in results.values())
@@ -588,6 +644,7 @@ class TestEngineDefLines:
         """Cover line 785 (_z3_val_to_python def) via counterexample extraction."""
         z3 = _z3()
         from provably.engine import _z3_val_to_python
+
         assert _z3_val_to_python(z3.IntVal(5)) == 5
         assert _z3_val_to_python(z3.BoolVal(True)) is True
         assert _z3_val_to_python(z3.BoolVal(False)) is False
@@ -612,6 +669,7 @@ class TestEngineDefLines:
         """Cover lines 855-893 (_TupleProxy class)."""
         z3 = _z3()
         from provably.engine import _TupleProxy
+
         tuple_id = z3.Int("__tuple_test")
         elem_sorts = [z3.IntSort(), z3.RealSort()]
         proxy = _TupleProxy(tuple_id, 2, elem_sorts)
@@ -639,6 +697,7 @@ class TestEngineDefLines:
         """Cover line 893 (_maybe_tuple_proxy) pass-through for non-tuple."""
         z3 = _z3()
         from provably.engine import _maybe_tuple_proxy
+
         expr = z3.Real("x")
         result = _maybe_tuple_proxy(expr, {})
         assert result is expr
@@ -646,6 +705,7 @@ class TestEngineDefLines:
     def test_err_function(self) -> None:
         """Cover line 904 (_err helper)."""
         from provably.engine import Status, _err
+
         cert = _err("fn", "def fn(): pass", "test message")
         assert cert.status == Status.TRANSLATION_ERROR
         assert cert.message == "test message"
@@ -670,8 +730,12 @@ class TestTranslatorSpecificPaths:
 
         # May be VERIFIED, COUNTEREXAMPLE, or TRANSLATION_ERROR
         # Either way, the int() cast on bool is invoked during translation
-        assert fn.__proof__.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                        Status.TRANSLATION_ERROR, Status.SKIPPED)
+        assert fn.__proof__.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.TRANSLATION_ERROR,
+            Status.SKIPPED,
+        )
 
     def test_float_cast_bool_sort(self) -> None:
         """Cover line 138 — float() on bool sort."""
@@ -682,8 +746,12 @@ class TestTranslatorSpecificPaths:
         def fn(x: bool) -> float:
             return float(x)
 
-        assert fn.__proof__.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                        Status.TRANSLATION_ERROR, Status.SKIPPED)
+        assert fn.__proof__.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.TRANSLATION_ERROR,
+            Status.SKIPPED,
+        )
 
     def test_unsupported_statement(self) -> None:
         """TranslationError for unsupported statement type."""
@@ -722,8 +790,12 @@ class TestTranslatorSpecificPaths:
 
         cert = verify_function(fn, post=lambda x, r: r >= 0)
         # walrus is handled; should not be TRANSLATION_ERROR
-        assert cert.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                Status.UNKNOWN, Status.TRANSLATION_ERROR)
+        assert cert.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.UNKNOWN,
+            Status.TRANSLATION_ERROR,
+        )
 
     def test_for_loop_with_else_clause(self) -> None:
         """Cover the for-loop else clause warning path."""
@@ -738,8 +810,12 @@ class TestTranslatorSpecificPaths:
             return total
 
         cert = verify_function(fn, post=lambda n, r: r == 4)
-        assert cert.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                Status.TRANSLATION_ERROR, Status.UNKNOWN)
+        assert cert.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.TRANSLATION_ERROR,
+            Status.UNKNOWN,
+        )
 
     def test_tuple_subscript_negative_out_of_range(self) -> None:
         """Cover tuple subscript out of range (line 1490-1492)."""
@@ -750,8 +826,12 @@ class TestTranslatorSpecificPaths:
             return t[0]
 
         cert = verify_function(fn, post=lambda x, y, r: r == x)
-        assert cert.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                Status.TRANSLATION_ERROR, Status.UNKNOWN)
+        assert cert.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.TRANSLATION_ERROR,
+            Status.UNKNOWN,
+        )
 
     def test_match_statement_with_guard(self) -> None:
         """Cover match with guard clause (line 658-661)."""
@@ -765,8 +845,12 @@ class TestTranslatorSpecificPaths:
                     return 0
 
         cert = verify_function(fn, post=lambda x, r: r >= 0)
-        assert cert.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                Status.TRANSLATION_ERROR, Status.UNKNOWN)
+        assert cert.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.TRANSLATION_ERROR,
+            Status.UNKNOWN,
+        )
 
     def test_filter_none_predicate_false_int(self) -> None:
         """Cover filter(None, [0, 1, 2]) where 0 is filtered out (line 1337-1338)."""
@@ -777,8 +861,12 @@ class TestTranslatorSpecificPaths:
             return sum(filtered)
 
         cert = verify_function(fn, post=lambda x, r: r == 3)
-        assert cert.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                Status.TRANSLATION_ERROR, Status.UNKNOWN)
+        assert cert.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.TRANSLATION_ERROR,
+            Status.UNKNOWN,
+        )
 
     def test_while_loop_early_return(self) -> None:
         """Cover while-loop early return path (line 542-550)."""
@@ -793,8 +881,12 @@ class TestTranslatorSpecificPaths:
             return -1
 
         cert = verify_function(fn, post=lambda x, r: r >= 0)
-        assert cert.status in (Status.VERIFIED, Status.COUNTEREXAMPLE,
-                                Status.TRANSLATION_ERROR, Status.UNKNOWN)
+        assert cert.status in (
+            Status.VERIFIED,
+            Status.COUNTEREXAMPLE,
+            Status.TRANSLATION_ERROR,
+            Status.UNKNOWN,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -808,16 +900,21 @@ class TestHypothesisSpecificPaths:
     def test_require_hypothesis_success(self) -> None:
         """Cover the success path of _require_hypothesis."""
         from provably.hypothesis import _require_hypothesis
+
         st = _require_hypothesis()
         assert st is not None
 
     def test_require_hypothesis_import_error(self) -> None:
         """Cover lines 33-34 — ImportError when hypothesis missing."""
         from provably import hypothesis as hyp_mod
-        with patch.dict(sys.modules, {"hypothesis": None, "hypothesis.strategies": None}), \
-             patch.object(hyp_mod, "_require_hypothesis",
-                          side_effect=ImportError("hypothesis not installed")), \
-             pytest.raises(ImportError, match="hypothesis"):
+
+        with (
+            patch.dict(sys.modules, {"hypothesis": None, "hypothesis.strategies": None}),
+            patch.object(
+                hyp_mod, "_require_hypothesis", side_effect=ImportError("hypothesis not installed")
+            ),
+            pytest.raises(ImportError, match="hypothesis"),
+        ):
             hyp_mod._require_hypothesis()
 
     def test_nested_annotated_base_type(self) -> None:
@@ -839,6 +936,7 @@ class TestHypothesisSpecificPaths:
 
         # Lt(5) where max_value is already set to 10 → min(10, 4) = 4
         from provably.types import Le, Lt
+
         strategy = from_refinements(Annotated[int, Le(10), Lt(5)])
         val = strategy.example()
         assert val < 5
@@ -853,7 +951,9 @@ class TestHypothesisSpecificPaths:
         # get_type_hints will return {} for an untyped function, covering the except path
         # We just verify it runs without crashing and returns a HypothesisResult
         with patch("provably.hypothesis.get_type_hints", side_effect=Exception("no hints")):
-            result = hypothesis_check(fn, post=lambda x, r: isinstance(r, (int, float)), max_examples=5)
+            result = hypothesis_check(
+                fn, post=lambda x, r: isinstance(r, (int, float)), max_examples=5
+            )
         assert isinstance(result.passed, bool)
 
     def test_hypothesis_check_signature_fails(self) -> None:
@@ -861,6 +961,7 @@ class TestHypothesisSpecificPaths:
         import inspect
 
         from provably.hypothesis import hypothesis_check
+
         with patch.object(inspect, "signature", side_effect=ValueError("no signature")):
             # With no params detected (empty list), runs zero-param path
             result = hypothesis_check(lambda: 42, post=lambda r: r == 42, max_examples=3)
@@ -881,9 +982,13 @@ class TestHypothesisSpecificPaths:
             postconditions=(),
             message="timed out",
         )
-        with patch("provably.hypothesis.verify_function", return_value=mock_cert), \
-             patch("provably.hypothesis.hypothesis_check",
-                   return_value=HypothesisResult(passed=True, counterexample=None, examples_run=10)) as mock_hc:
+        with (
+            patch("provably.hypothesis.verify_function", return_value=mock_cert),
+            patch(
+                "provably.hypothesis.hypothesis_check",
+                return_value=HypothesisResult(passed=True, counterexample=None, examples_run=10),
+            ) as mock_hc,
+        ):
 
             @proven_property(post=lambda x, r: r >= 0)
             def fn(x: float) -> float:
@@ -896,6 +1001,7 @@ class TestHypothesisSpecificPaths:
     def test_from_refinements_bool(self) -> None:
         """Cover bool branch in from_refinements."""
         from provably.hypothesis import from_refinements
+
         strategy = from_refinements(bool)
         val = strategy.example()
         assert isinstance(val, bool)
@@ -903,6 +1009,7 @@ class TestHypothesisSpecificPaths:
     def test_from_refinements_unsupported_type(self) -> None:
         """Cover the TypeError branch in from_refinements."""
         from provably.hypothesis import from_refinements
+
         with pytest.raises(TypeError, match="Unsupported base type"):
             from_refinements(str)
 
@@ -1023,6 +1130,7 @@ class TestPytestPluginPaths:
         # Create a mock with __proof__
         def mock_verified_fn():  # type: ignore
             return "verified"
+
         mock_verified_fn.__proof__ = cert  # type: ignore
 
         # Create mock session with items that have modules
@@ -1057,6 +1165,7 @@ class TestPytestPluginPaths:
 
         def mock_verified_fn():  # type: ignore
             return "counterexample"
+
         mock_verified_fn.__proof__ = cert_ce  # type: ignore
 
         fake_module = types.ModuleType("fake_module")
@@ -1085,6 +1194,7 @@ class TestPytestPluginPaths:
     def test_pytest_addoption_called(self) -> None:
         """Cover line 34 (pytest_addoption def)."""
         from provably.pytest_plugin import pytest_addoption
+
         mock_parser = MagicMock()
         mock_group = MagicMock()
         mock_parser.getgroup.return_value = mock_group
@@ -1095,6 +1205,7 @@ class TestPytestPluginPaths:
     def test_pytest_configure_called(self) -> None:
         """Cover line 51 (pytest_configure def)."""
         from provably.pytest_plugin import pytest_configure
+
         mock_config = MagicMock()
         pytest_configure(mock_config)
         mock_config.addinivalue_line.assert_called_once()
@@ -1102,6 +1213,7 @@ class TestPytestPluginPaths:
     def test_pytest_collection_modifyitems_no_provably(self) -> None:
         """Cover line 64 — no --provably flag, items unchanged."""
         from provably.pytest_plugin import pytest_collection_modifyitems
+
         config = MagicMock()
         config.getoption.return_value = False
         items = [MagicMock(), MagicMock()]
@@ -1112,6 +1224,7 @@ class TestPytestPluginPaths:
     def test_pytest_collection_modifyitems_no_deselected(self) -> None:
         """Cover line 81->83 — all items are proven, no deselected."""
         from provably.pytest_plugin import pytest_collection_modifyitems
+
         config = MagicMock()
         config.getoption.return_value = True  # --provably active
 
@@ -1126,6 +1239,7 @@ class TestPytestPluginPaths:
     def test_terminal_summary_no_report_flag(self) -> None:
         """Cover line 91 (pytest_terminal_summary def) — no flag, returns early."""
         from provably.pytest_plugin import pytest_terminal_summary
+
         config = MagicMock()
         config.getoption.return_value = False  # --provably-report not set
         reporter = MagicMock()
@@ -1135,6 +1249,7 @@ class TestPytestPluginPaths:
     def test_session_collector_fixture_line(self) -> None:
         """Cover lines 198-199 (_provably_session_collector fixture def)."""
         from provably.pytest_plugin import _provably_session_collector
+
         # Just check it's a fixture
         assert callable(_provably_session_collector)
 
@@ -1142,6 +1257,7 @@ class TestPytestPluginPaths:
 # ---------------------------------------------------------------------------
 # engine.py — new functions added after initial analysis
 # ---------------------------------------------------------------------------
+
 
 class TestEngineNewFunctions:
     """Cover _fast_key, _safe_cell_repr, _disk_cache_dir, configure log_level, _fast_cache hit."""
@@ -1151,6 +1267,7 @@ class TestEngineNewFunctions:
         import logging
 
         from provably.engine import configure
+
         configure(log_level="DEBUG")
         logger = logging.getLogger("provably")
         assert logger.level == logging.DEBUG
@@ -1159,12 +1276,14 @@ class TestEngineNewFunctions:
     def test_configure_unknown_key_raises(self) -> None:
         """Cover configure() ValueError branch."""
         from provably.engine import configure
+
         with pytest.raises(ValueError, match="Unknown configure"):
             configure(nonexistent_key=42)
 
     def test_fast_key_with_closure(self) -> None:
         """Cover _fast_key closure branch."""
         from provably.engine import _fast_key
+
         x = 42
 
         def fn_closure() -> int:
@@ -1187,6 +1306,7 @@ class TestEngineNewFunctions:
     def test_fast_key_builtin_returns_none(self) -> None:
         """Cover _fast_key AttributeError path — builtins have no __code__."""
         from provably.engine import _fast_key
+
         key = _fast_key(len, None, None)  # len is a builtin
         assert key is None
 
@@ -1198,8 +1318,10 @@ class TestEngineNewFunctions:
 
         # Create an empty cell by making a closure then clearing it
         x = 1
+
         def make_closure():
             return lambda: x
+
         f = make_closure()
         # Access the cell directly
         cell = f.__closure__[0]
@@ -1210,6 +1332,7 @@ class TestEngineNewFunctions:
     def test_safe_cell_repr_non_hashable(self) -> None:
         """Cover _safe_cell_repr fallback repr branch."""
         from provably.engine import _safe_cell_repr
+
         # Pass a mock that acts like a cell with a non-primitive value
         cell = MagicMock()
         cell.cell_contents = [1, 2, 3]  # list is non-primitive
@@ -1219,6 +1342,7 @@ class TestEngineNewFunctions:
     def test_disk_cache_dir_none_when_disabled(self) -> None:
         """Cover _disk_cache_dir None path."""
         from provably.engine import _disk_cache_dir, configure
+
         configure(cache_dir=None)
         result = _disk_cache_dir()
         assert result is None
@@ -1230,6 +1354,7 @@ class TestEngineNewFunctions:
         import tempfile
 
         from provably.engine import _disk_cache_dir, configure
+
         with tempfile.TemporaryDirectory() as tmpdir:
             configure(cache_dir=tmpdir)
             p1 = _disk_cache_dir()
@@ -1253,6 +1378,7 @@ class TestEngineNewFunctions:
             cert1 = verify_function(fn_for_fast_cache, post=lambda x, r: r > x)
             # Clear only _proof_cache to force _fast_cache path
             from provably.engine import _fast_cache, _proof_cache
+
             _proof_cache.clear()
             # Second call — should hit _fast_cache (skipping getsource)
             cert2 = verify_function(fn_for_fast_cache, post=lambda x, r: r > x)
@@ -1264,11 +1390,13 @@ class TestEngineNewFunctions:
         import tempfile
 
         from provably.engine import _load_from_disk, clear_cache, configure
+
         with tempfile.TemporaryDirectory() as tmpdir:
             configure(cache_dir=tmpdir)
             clear_cache()
             # Write corrupt JSON to the cache
             from pathlib import Path as P
+
             corrupt = P(tmpdir) / "deadbeef12345678.json"
             corrupt.write_text("not valid json {{{")
             result = _load_from_disk("deadbeef12345678")
@@ -1278,6 +1406,7 @@ class TestEngineNewFunctions:
     def test_proof_certificate_explain_with_counterexample(self) -> None:
         """Cover explain() counterexample branch fully."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="bad_fn",
             source_hash="abc",
@@ -1295,6 +1424,7 @@ class TestEngineNewFunctions:
     def test_proof_certificate_to_prompt_counterexample(self) -> None:
         """Cover to_prompt() COUNTEREXAMPLE branch."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="bad_fn",
             source_hash="abc",
@@ -1310,6 +1440,7 @@ class TestEngineNewFunctions:
     def test_proof_certificate_to_prompt_other_status(self) -> None:
         """Cover to_prompt() fallback branch (UNKNOWN/SKIPPED/etc)."""
         from provably.engine import ProofCertificate, Status
+
         cert = ProofCertificate(
             function_name="fn",
             source_hash="abc",
@@ -1325,14 +1456,16 @@ class TestEngineNewFunctions:
         """Cover _z3_val_to_python rational branch."""
         z3 = _z3()
         from provably.engine import _z3_val_to_python
+
         val = z3.RealVal("1/3")
         result = _z3_val_to_python(val)
         assert isinstance(result, float)
-        assert abs(result - 1/3) < 1e-9
+        assert abs(result - 1 / 3) < 1e-9
 
     def test_z3_val_to_python_fallback_str(self) -> None:
         """Cover _z3_val_to_python str fallback branch."""
         from provably.engine import _z3_val_to_python
+
         # Pass a non-Z3 object — should return str(val)
         result = _z3_val_to_python("not_a_z3_val")
         assert isinstance(result, str)
@@ -1340,6 +1473,7 @@ class TestEngineNewFunctions:
     def test_fast_key_with_closure_in_contract(self) -> None:
         """Cover _fast_key line 351 — cb.__closure__ truthy path."""
         from provably.engine import _fast_key
+
         threshold = 5.0
 
         def fn(x: float) -> float:
@@ -1364,6 +1498,7 @@ class TestEngineNewFunctions:
     def test_contract_sig_with_closure_nonempty(self) -> None:
         """Cover _contract_sig closure branch (non-empty cell)."""
         from provably.engine import _contract_sig
+
         captured = 42
 
         def fn_with_closure() -> int:
@@ -1386,6 +1521,7 @@ class TestEngineNewFunctions:
     def test_disk_cache_path_none_when_dir_none(self) -> None:
         """Cover _disk_cache_path None path."""
         from provably.engine import _disk_cache_path, configure
+
         configure(cache_dir=None)
         result = _disk_cache_path("anykey")
         assert result is None
@@ -1394,6 +1530,7 @@ class TestEngineNewFunctions:
     def test_load_from_disk_path_none(self) -> None:
         """Cover _load_from_disk None path (disk disabled)."""
         from provably.engine import _load_from_disk, clear_cache, configure
+
         configure(cache_dir=None)
         clear_cache()
         result = _load_from_disk("anykey")
@@ -1403,6 +1540,7 @@ class TestEngineNewFunctions:
     def test_validate_contract_arity_uninspectable(self) -> None:
         """Cover _validate_contract_arity ValueError/TypeError path."""
         from provably.engine import _validate_contract_arity
+
         # A C extension callable can't be inspected — returns None
         result = _validate_contract_arity(len, 1, "post", "fn")
         assert result is None
@@ -1410,6 +1548,7 @@ class TestEngineNewFunctions:
     def test_extract_counterexample_with_tuple_meta(self) -> None:
         """Cover _extract_counterexample tuple_meta branch."""
         from provably.engine import _extract_counterexample
+
         z3 = _z3()
         solver = z3.Solver()
         x_var = z3.Int("x")
@@ -1823,6 +1962,7 @@ class TestTranslatorBitopUnsupportedGap:
         y = z3m.Int("y")
 
         import ast
+
         # MatMult is a valid ast.operator but not a bitwise op —
         # but _bitop is only called for BitAnd/BitOr/BitXor/LShift/RShift.
         # To hit line 889, we need to pass an unsupported op to _bitop directly.
@@ -1868,6 +2008,7 @@ class TestPytestPluginGaps:
         # The fixture is autouse=session, so it runs automatically in any pytest session.
         # We just verify it's importable and callable.
         from provably.pytest_plugin import _provably_session_collector
+
         assert callable(_provably_session_collector)
 
     def test_collect_proof_certs_none_module_in_sys(self) -> None:
@@ -1894,8 +2035,10 @@ class TestPytestPluginGaps:
 
         class BrokenModule:
             """Module where getattr always raises."""
+
             def __dir__(self):
                 return ["boom"]
+
             def __getattr__(self, name):
                 raise RuntimeError("intentional getattr failure")
 
@@ -1943,10 +2086,11 @@ class TestLean4ExprToLeanGaps:
 
         from provably.lean4 import _expr_to_lean
 
-        # x.bit_length() → func is an Attribute
+        # Dropping the receiver and translating this as a bare Lean identifier
+        # would be a semantic substitution, so method calls fail closed.
         node = ast.parse("x.bit_length()", mode="eval").body
-        result = _expr_to_lean(node, {"x": "x"})
-        assert isinstance(result, str)
+        with pytest.raises(ValueError, match="Unsupported Lean4 call"):
+            _expr_to_lean(node, {"x": "x"})
 
     def test_bool_return_type_hint(self) -> None:
         """Cover line 288: bool return type hint -> core mode (lean4.py)."""
@@ -1977,10 +2121,10 @@ class TestLean4ExportGaps:
         def f(x: UnresolvableType9999) -> float:  # type: ignore[name-defined]  # noqa: F821 - undefined name is the test (forces NameError)
             return float(x)
 
-        result = export_lean4(f)
-        assert isinstance(result, str)
-        # Should still produce output using float as default type
-        assert "f_impl" in result
+        # Falling back to a numeric sort is safe, but silently treating the
+        # Python ``float`` cast as a Lean identifier is not.
+        with pytest.raises(ValueError, match="Unsupported Lean4 call"):
+            export_lean4(f)
 
     def test_export_with_refinement_constraints(self) -> None:
         """Cover line 694: refinement constraints appended in export_lean4."""
@@ -2085,7 +2229,6 @@ class TestTranslatorMatchBothNoneGap:
 
         from provably.translator import Translator
 
-
         # Non-exhaustive match with assignment arms only, NO statements after match.
         # remaining = [] → default_ret = None.
         # Each case body assigns (no return) → case body returns None,
@@ -2120,7 +2263,6 @@ class TestTranslatorEmptyMatchGap:
         import z3 as z3m
 
         from provably.translator import Translator
-
 
         # Construct a Match node with empty cases list directly via AST manipulation.
         # Python source can't produce an empty match, so we build the AST manually.
@@ -2384,7 +2526,6 @@ class TestTranslatorMatchMixedReturningRaise:
 
         from provably.translator import TranslationError, Translator
 
-
         # Non-exhaustive match: case1 returns, case2 assigns only.
         # Processed in reverse: i=1 (case2 assign) -> both None -> merge
         #                        i=0 (case1 return99) -> case_ret=99, result_ret=None -> line 718
@@ -2411,7 +2552,6 @@ def f(x: int) -> int:
         import z3 as z3m
 
         from provably.translator import TranslationError, Translator
-
 
         # Exhaustive match (wildcard): wildcard returns 99, case 2 assigns only.
         # Processed reverse: i=1 (wildcard) -> result_ret=99 (else branch)
@@ -2605,8 +2745,10 @@ class TestEngineClosureCellValueError:
             # x is referenced in closure but never assigned on any live path
             if False:
                 x = 1  # noqa: F841
+
             def inner():
                 return x  # noqa: F821
+
             return inner
 
         inner = make_empty_cell()
@@ -2761,6 +2903,7 @@ class TestSelfProofPostLambdasDirect:
     def test_clamp_post_direct_in_range(self) -> None:
         """Line 59: call _clamp_post(val, lo, hi, result) directly."""
         from provably._self_proof import _clamp_post  # type: ignore[attr-defined]
+
         # val in [lo, hi] — third clause fires
         r = _clamp_post(5, 0, 10, 5)
         assert r  # should be True
@@ -2768,18 +2911,21 @@ class TestSelfProofPostLambdasDirect:
     def test_clamp_post_direct_below_lo(self) -> None:
         """Line 59 again: val < lo path."""
         from provably._self_proof import _clamp_post  # type: ignore[attr-defined]
+
         r = _clamp_post(-1, 0, 10, 0)
         assert r
 
     def test_clamp_post_direct_above_hi(self) -> None:
         """Line 59 again: val > hi path."""
         from provably._self_proof import _clamp_post  # type: ignore[attr-defined]
+
         r = _clamp_post(15, 0, 10, 10)
         assert r
 
     def test_max_of_abs_post_direct(self) -> None:
         """Line 132: call _max_of_abs_post(a, b, result) directly."""
         from provably._self_proof import _max_of_abs_post  # type: ignore[attr-defined]
+
         # result = |a| when |a| > |b|
         r = _max_of_abs_post(5, 3, 5)
         assert r
