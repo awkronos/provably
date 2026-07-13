@@ -1920,9 +1920,16 @@ class TestLean4WithMockedSubprocess:
         from provably.engine import Status
 
         monkeypatch.setattr(m, "HAS_LEAN4", True)
+        monkeypatch.setattr(m.secrets, "token_hex", lambda _: "testtoken")
 
         mock_result = self._make_subprocess_result(
-            0, "'f_verified' does not depend on any axioms", ""
+            0,
+            (
+                "__PROVABLY_AXIOM_AUDIT_BEGIN_testtoken__\n"
+                "'f_verified' does not depend on any axioms\n"
+                "__PROVABLY_AXIOM_AUDIT_END_testtoken__\n"
+            ),
+            "",
         )
         monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
 

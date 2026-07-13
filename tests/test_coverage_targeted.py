@@ -421,19 +421,15 @@ class TestLean4FuncBody:
         )
         assert "let x" in out
 
-    def test_aug_assign_floor_div_rejected(self) -> None:
-        """Floor division is rejected until Python/Lean semantics are aligned."""
+    @pytest.mark.parametrize("operator", ["%=", "//="])
+    def test_aug_assign_nonportable_division_rejected(self, operator: str) -> None:
+        """Remainder/floor division stay out until their semantics are aligned."""
         from provably.lean4 import generate_lean4_theorem
 
         source = (
-            "def g(x: int) -> int:\n"
-            "    x -= 1\n"
-            "    x *= 2\n"
-            "    x %= 5\n"
-            "    x //= 3\n"
-            "    return x\n"
+            f"def g(x: int) -> int:\n    x -= 1\n    x *= 2\n    x {operator} 3\n    return x\n"
         )
-        with pytest.raises(ValueError, match="FloorDiv"):
+        with pytest.raises(ValueError, match="Mod|FloorDiv"):
             generate_lean4_theorem(
                 func_name="g",
                 param_names=["x"],

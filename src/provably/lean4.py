@@ -29,6 +29,7 @@ import ast  # pragma: no cover
 import hashlib  # pragma: no cover
 import inspect  # pragma: no cover
 import re  # pragma: no cover
+import secrets  # pragma: no cover
 import subprocess  # pragma: no cover
 import tempfile  # pragma: no cover
 import textwrap  # pragma: no cover
@@ -70,6 +71,32 @@ def _py_type_to_lean(typ: type | None) -> str:
         if args:
             return _py_type_to_lean(args[0])
     return "Float"
+
+
+def _base_python_type(typ: Any | None) -> Any | None:
+    """Strip ``Annotated``-style metadata from a runtime type hint."""
+    origin = getattr(typ, "__origin__", None)
+    return origin if origin in (int, float, bool) else typ
+
+
+def _ast_annotation_type(annotation: ast.expr | None) -> type | None:
+    """Recover a supported base type from a source-level annotation."""
+    if isinstance(annotation, ast.Name):
+        return {"int": int, "float": float, "bool": bool}.get(annotation.id)
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        return {"int": int, "float": float, "bool": bool}.get(annotation.value)
+    if isinstance(annotation, ast.Subscript):
+        annotation_head = annotation.value
+        is_annotated = (
+            isinstance(annotation_head, ast.Name) and annotation_head.id == "Annotated"
+        ) or (isinstance(annotation_head, ast.Attribute) and annotation_head.attr == "Annotated")
+        if not is_annotated:
+            return None
+        slice_node = annotation.slice
+        if isinstance(slice_node, ast.Tuple) and slice_node.elts:
+            return _ast_annotation_type(slice_node.elts[0])
+        return _ast_annotation_type(slice_node)
+    return None
 
 
 def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
@@ -150,11 +177,9 @@ def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
         return f"(if {test} then {body} else {orelse})"
 
     if isinstance(node, ast.Call):
-        func_name = ""
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            func_name = node.func.attr
+        if not isinstance(node.func, ast.Name):
+            raise ValueError(f"Unsupported Lean4 call: {ast.dump(node.func)}")
+        func_name = node.func.id
         args = [_expr_to_lean(a, env) for a in node.args]
         builtin_map = {
             "min": lambda a: f"(min {a[0]} {a[1]})" if len(a) == 2 else f"min {' '.join(a)}",
@@ -230,7 +255,7 @@ def _statements_to_lean(statements: list[ast.stmt], env: dict[str, str]) -> str:
     if isinstance(stmt, ast.AugAssign):
         if not isinstance(stmt.target, ast.Name):
             raise ValueError("Lean4 backend only supports augmented assignment to local names")
-        op_map = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/", ast.Mod: "%"}
+        op_map = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/"}
         op = op_map.get(type(stmt.op))
         if op is None:
             raise ValueError(f"Unsupported augmented assignment: {type(stmt.op).__name__}")
@@ -268,6 +293,7 @@ def generate_lean4_theorem(
     pre_str: str | None,
     post_str: str | None,
     source: str,
+    return_type: type | None = None,
 ) -> str:
     """Generate a complete Lean4 file with theorem statement + proof attempt.
 
@@ -291,19 +317,22 @@ def generate_lean4_theorem(
         raise ValueError("Lean4 translation source is not a function definition")
 
     # Pick the output mode from parameter types.
-    all_int_or_bool = all(param_types.get(name, float) in (int, bool) for name in param_names)
-    # Crude return-type check — the decorator already filters out
-    # unsupported annotations so ``float`` is the only 'must use ℝ'.
-    ret_hint: type | None = None
-    returns = getattr(func_ast, "returns", None)
-    if isinstance(returns, ast.Name):
-        if returns.id == "int":
-            ret_hint = int
-        elif returns.id == "bool":
-            ret_hint = bool
-        elif returns.id == "float":
-            ret_hint = float
+    all_int_or_bool = all(
+        _base_python_type(param_types.get(name, float)) in (int, bool) for name in param_names
+    )
+    ret_hint = _base_python_type(return_type)
+    if ret_hint not in (int, float, bool):
+        ret_hint = _ast_annotation_type(getattr(func_ast, "returns", None))
     core_mode = all_int_or_bool and ret_hint in (int, bool, None)
+    if core_mode and any(
+        (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div))
+        or (isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Div))
+        for node in ast.walk(func_ast)
+    ):
+        raise ValueError(
+            "Lean4 core mode rejects Python `/`: Python integer operands produce a float, "
+            "while Lean Int division has different semantics"
+        )
 
     params = []
     for name in param_names:
@@ -317,7 +346,7 @@ def generate_lean4_theorem(
     env = {n: n for n in param_names}
     body = _func_body_to_lean(func_ast, env)
 
-    return_type = (
+    lean_return_type = (
         "Int"
         if core_mode and ret_hint is int
         else "Bool"
@@ -339,7 +368,7 @@ def generate_lean4_theorem(
         lean_lines.append("")
     lean_lines.extend(
         [
-            f"{def_kw} {func_name}_impl {param_decl} : {return_type} :=",
+            f"{def_kw} {func_name}_impl {param_decl} : {lean_return_type} :=",
             f"  {body}",
             "",
         ]
@@ -418,9 +447,26 @@ def _z3_str_to_lean(z3_str: str, param_names: list[str]) -> str:
                 return f" {connective} ".join(f"({convert(part)})" for part in parts)
         if text.startswith("Not(") and text.endswith(")"):
             return f"¬({convert(text[4:-1])})"
-        return text.replace(">=", "≥").replace("<=", "≤").replace("!=", "≠")
+        return text.replace(">=", "≥").replace("<=", "≤").replace("!=", "≠").replace("==", "=")
 
     return convert(z3_str)
+
+
+def _fresh_result_symbol(param_names: list[str]) -> str:
+    """Return a Z3/Lean-safe result name distinct from every parameter."""
+    result_name = "__provably_result"
+    while result_name in param_names:
+        result_name += "_"
+    return result_name
+
+
+def _replace_result_symbol(expression: str, result_name: str, implementation: str) -> str:
+    """Replace only the dedicated result token, never a parameter substring."""
+    return re.sub(
+        rf"(?<![A-Za-z0-9_]){re.escape(result_name)}(?![A-Za-z0-9_])",
+        lambda _: implementation,
+        expression,
+    )
 
 
 # =============================================================================
@@ -428,14 +474,17 @@ def _z3_str_to_lean(z3_str: str, param_names: list[str]) -> str:
 # =============================================================================
 
 
-_ALLOWED_LEAN_AXIOMS = {
+_FOUNDATIONAL_LEAN_AXIOMS = {
     "propext",
     "Classical.choice",
     "Quot.sound",
+}
+_NATIVE_DECIDE_AXIOMS = {
     "Lean.ofReduceBool",
     "Lean.reduceBool",
     "Lean.trustCompiler",
 }
+_LEAN_DECLARATION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
 
 
 def _contains_placeholder(lean_code: str) -> bool:
@@ -452,10 +501,15 @@ def check_lean4_proof(
     lean_code: str,
     timeout_s: float = 60.0,
     theorem_name: str | None = None,
+    *,
+    allow_native_decide: bool = False,
 ) -> tuple[bool, str]:
     """Write Lean4 code to a temp file and check it.
 
-    Returns (success, output).
+    Returns (success, output).  A theorem audit accepts only Lean's
+    foundational axioms.  Native-decision trust axioms require both an
+    explicit ``allow_native_decide`` opt-in and a visible ``native_decide``
+    tactic in the checked source.
     """
     if _contains_placeholder(lean_code):
         return False, "Lean4 proof contains an admitted `sorry` or `axiom` placeholder"
@@ -464,8 +518,19 @@ def check_lean4_proof(
         return False, "Lean4 not installed"
 
     checked_code = lean_code
+    audit_begin: str | None = None
+    audit_end: str | None = None
     if theorem_name is not None:
-        checked_code += f"\n\n#print axioms {theorem_name}\n"
+        if _LEAN_DECLARATION_NAME.fullmatch(theorem_name) is None:
+            return False, f"Invalid Lean4 theorem name for axiom audit: {theorem_name!r}"
+        audit_token = secrets.token_hex(16)
+        audit_begin = f"__PROVABLY_AXIOM_AUDIT_BEGIN_{audit_token}__"
+        audit_end = f"__PROVABLY_AXIOM_AUDIT_END_{audit_token}__"
+        checked_code += (
+            f'\n\n#eval IO.println "{audit_begin}"\n'
+            f"#print axioms {theorem_name}\n"
+            f'#eval IO.println "{audit_end}"\n'
+        )
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".lean", delete=False, prefix="provably_"
@@ -486,9 +551,18 @@ def check_lean4_proof(
         if "declaration uses 'sorry'" in output or "sorryAx" in output:
             return False, f"Lean4 reported an admitted declaration: {output}"
         if theorem_name is not None:
+            assert audit_begin is not None and audit_end is not None
+            begin_at = result.stdout.find(audit_begin)
+            end_at = result.stdout.find(audit_end, begin_at + len(audit_begin))
+            if begin_at < 0 or end_at < 0:
+                return (
+                    False,
+                    f"Lean4 axiom audit markers were missing for {theorem_name}: {output}",
+                )
+            audit_output = result.stdout[begin_at + len(audit_begin) : end_at]
             escaped = re.escape(theorem_name)
-            depends = re.search(rf"'{escaped}' depends on axioms: \[([^]]*)\]", output)
-            no_axioms = re.search(rf"'{escaped}' does not depend on any axioms", output)
+            depends = re.search(rf"'{escaped}' depends on axioms: \[([^]]*)\]", audit_output)
+            no_axioms = re.search(rf"'{escaped}' does not depend on any axioms", audit_output)
             if depends is None and no_axioms is None:
                 return False, f"Lean4 axiom audit produced no result for {theorem_name}: {output}"
             axioms = (
@@ -496,7 +570,13 @@ def check_lean4_proof(
                 if depends is not None
                 else set()
             )
-            unexpected = axioms - _ALLOWED_LEAN_AXIOMS
+            allowed_axioms = set(_FOUNDATIONAL_LEAN_AXIOMS)
+            has_native_decide = bool(
+                re.search(r"(?:\bby\s+|^\s*)native_decide\b", lean_code, re.MULTILINE)
+            )
+            if allow_native_decide and has_native_decide:
+                allowed_axioms.update(_NATIVE_DECIDE_AXIOMS)
+            unexpected = axioms - allowed_axioms
             if unexpected:
                 return False, f"Lean4 theorem depends on disallowed axioms: {sorted(unexpected)}"
         return True, output
@@ -575,10 +655,14 @@ def verify_with_lean4(
         hints = {}
 
     param_names = [arg.arg for arg in func_ast.args.args]
+    source_param_types = {
+        arg.arg: _ast_annotation_type(arg.annotation) for arg in func_ast.args.args
+    }
+    source_return_type = _ast_annotation_type(func_ast.returns)
     param_types: dict[str, type] = {}
     param_vars: dict[str, Any] = {}
     for name in param_names:
-        typ = hints.get(name, float)
+        typ = hints.get(name) or source_param_types.get(name) or float
         param_types[name] = typ
         param_vars[name] = make_z3_var(name, typ)
 
@@ -647,9 +731,10 @@ def verify_with_lean4(
         # Match the symbolic result sort to the Python return annotation.
         # Using Real unconditionally made Int/Bool contracts describe a
         # different theorem from the generated implementation.
-        result_type = hints.get("return", float)
+        result_type = hints.get("return") or source_return_type or float
+        result_name = _fresh_result_symbol(param_names)
         try:
-            result_var = make_z3_var("result", result_type)
+            result_var = make_z3_var(result_name, result_type)
         except TypeError as e:
             return ProofCertificate(
                 function_name=fname,
@@ -693,7 +778,11 @@ def verify_with_lean4(
 
     # Replace 'result' with the actual function definition body
     if post_lean:
-        post_lean = post_lean.replace("result", f"({fname}_impl {' '.join(param_names)})")
+        post_lean = _replace_result_symbol(
+            post_lean,
+            result_name,
+            f"({fname}_impl {' '.join(param_names)})",
+        )
 
     # Generate Lean4 code
     try:
@@ -704,6 +793,7 @@ def verify_with_lean4(
             pre_str=pre_lean,
             post_str=post_lean,
             source=source,
+            return_type=hints.get("return") or source_return_type,
         )
     except ValueError as e:
         return ProofCertificate(
@@ -790,10 +880,14 @@ def export_lean4(
         hints = {}
 
     param_names = [arg.arg for arg in func_ast.args.args]
+    source_param_types = {
+        arg.arg: _ast_annotation_type(arg.annotation) for arg in func_ast.args.args
+    }
+    source_return_type = _ast_annotation_type(func_ast.returns)
     param_types: dict[str, type] = {}
     param_vars: dict[str, Any] = {}
     for name in param_names:
-        typ = hints.get(name, float)
+        typ = hints.get(name) or source_param_types.get(name) or float
         param_types[name] = typ
         param_vars[name] = make_z3_var(name, typ)
 
@@ -822,9 +916,10 @@ def export_lean4(
                 pre_strs.append(str(constraint))
 
     if post is not None:
-        result_type = hints.get("return", float)
+        result_type = hints.get("return") or source_return_type or float
+        result_name = _fresh_result_symbol(param_names)
         try:
-            result_var = make_z3_var("result", result_type)
+            result_var = make_z3_var(result_name, result_type)
         except TypeError as e:
             raise ValueError(f"Unsupported return type when exporting: {e}") from e
         try:
@@ -845,7 +940,11 @@ def export_lean4(
     )
 
     if post_lean:
-        post_lean = post_lean.replace("result", f"({fname}_impl {' '.join(param_names)})")
+        post_lean = _replace_result_symbol(
+            post_lean,
+            result_name,
+            f"({fname}_impl {' '.join(param_names)})",
+        )
 
     lean_code = generate_lean4_theorem(
         func_name=fname,
@@ -854,6 +953,7 @@ def export_lean4(
         pre_str=pre_lean,
         post_str=post_lean,
         source=source,
+        return_type=hints.get("return") or source_return_type,
     )
 
     if _contains_placeholder(lean_code):

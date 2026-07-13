@@ -121,8 +121,10 @@ The Lean4 backend follows the same flow as the Z3 backend:
   conditionals, and basic arithmetic expressions
 - Unsupported/incomplete branches, loops, recursion, data structures, and
   transcendental calls are rejected
-- Integer floor-division is rejected until Python and Lean quotient semantics
-  are connected by an explicit correctness theorem
+- Integer `/`, floor-division, and remainder are rejected until Python and
+  Lean numeric semantics are connected by explicit correctness theorems
+- Python `float` follows Provably's documented mathematical-real model (`ℝ`),
+  not IEEE-754 rounding, NaN, or overflow behavior
 - Slower than Z3 (compiles to native code)
 - Requires Lean4 + Mathlib for `nlinarith` tactic
 

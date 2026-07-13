@@ -2348,9 +2348,11 @@ class TestLean4VerifyWithLean4Hints:
         def f(x: BadAnnotationType999) -> float:  # type: ignore[name-defined]  # noqa: F821 - undefined name is the test (forces NameError)
             return float(x)
 
-        # export_lean4 has the same get_type_hints try/except pattern (lines 662-663)
-        result = export_lean4(f)
-        assert isinstance(result, str)
+        # The unresolved annotation forces the conservative fallback.  The
+        # strict Lean backend must reject the cast instead of guessing a type
+        # and emitting a theorem about a potentially different function.
+        with pytest.raises(ValueError, match="Unsupported Lean4 call: float"):
+            export_lean4(f)
 
 
 # ---------------------------------------------------------------------------
