@@ -162,11 +162,11 @@ def _collect_proof_certificates(config: pytest.Config) -> list[ProofCertificate]
     for _mod_name, mod in list(sys.modules.items()):
         if mod is None:
             continue
-        for attr in dir(mod):
-            try:
-                obj = getattr(mod, attr)
-            except Exception:
-                continue
+        try:
+            objects = tuple(vars(mod).values())
+        except TypeError:
+            continue
+        for obj in objects:
             if callable(obj) and hasattr(obj, "__proof__"):
                 proof = obj.__proof__
                 if isinstance(proof, PC):
@@ -184,11 +184,11 @@ def _scan_item_for_proofs(item: pytest.Item, certs: dict[str, Any]) -> None:
 
     from provably.engine import ProofCertificate as PC
 
-    for attr in dir(mod):
-        try:
-            obj = getattr(mod, attr)
-        except Exception:
-            continue
+    try:
+        objects = tuple(vars(mod).values())
+    except TypeError:
+        return
+    for obj in objects:
         if callable(obj) and hasattr(obj, "__proof__"):
             proof = obj.__proof__
             if isinstance(proof, PC):

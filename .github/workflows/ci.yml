@@ -23,8 +23,8 @@ jobs:
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -38,6 +38,10 @@ jobs:
       - name: Type check
         run: mypy src/provably
       - name: Test
-        # Coverage floor = current line coverage (93%) rounded down to the
-        # nearest 5%.
-        run: pytest --cov=provably --cov-fail-under=90 tests/
+        # Start coverage before pytest loads the installed provably plugin;
+        # pytest-cov otherwise imports the package before measurement and
+        # emits a module-not-measured warning.
+        run: |
+          coverage erase
+          coverage run --source=provably -m pytest tests/
+          coverage report --fail-under=90

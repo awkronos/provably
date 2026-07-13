@@ -687,6 +687,30 @@ class TestPytestPluginModulesScan:
         names = {c.function_name for c in certs}
         assert "add_zero" in names
 
+    def test_collect_does_not_invoke_dynamic_module_attributes(self) -> None:
+        """The fallback reads module dictionaries without triggering proxies."""
+        import sys
+        from unittest.mock import MagicMock
+
+        from provably.pytest_plugin import _collect_proof_certificates
+
+        class DynamicModule:
+            safe_value = object()
+
+            def __dir__(self) -> list[str]:
+                return ["deprecated_proxy"]
+
+            def __getattr__(self, name: str) -> object:
+                raise AssertionError(f"dynamic attribute {name!r} was accessed")
+
+        sentinel_key = "__provably_test_dynamic_module__"
+        sys.modules[sentinel_key] = DynamicModule()  # type: ignore[assignment]
+        try:
+            certs = _collect_proof_certificates(MagicMock(spec=[]))
+            assert isinstance(certs, list)
+        finally:
+            del sys.modules[sentinel_key]
+
     def test_scan_item_missing_module(self) -> None:
         """_scan_item_for_proofs returns silently when item has no module."""
         from unittest.mock import MagicMock
