@@ -44,13 +44,15 @@ logger = logging.getLogger("provably")  # pragma: no cover
 
 # Optional orjson accelerator for disk-cache serialization (3-5x faster than
 # stdlib json for our typical certificate sizes of 200-800 bytes).
+_orjson: Any = None
+_HAS_ORJSON = False
 try:  # pragma: no cover
-    import orjson as _orjson
+    import orjson
 
+    _orjson = orjson
     _HAS_ORJSON = True
 except ImportError:  # pragma: no cover
-    _orjson = None  # type: ignore[assignment]
-    _HAS_ORJSON = False
+    pass
 
 # ---------------------------------------------------------------------------
 # Global configuration
