@@ -12,4 +12,4 @@ lint:
 	ruff check src/ tests/
 
 typecheck:
-	mypy src/provably
+	$(or $(PYTHON),.venv/bin/python) -m mypy src/provably

@@ -111,6 +111,21 @@ module = "orjson"
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
+# Pyright
+# ---------------------------------------------------------------------------
+# The distributable library is the supported type-checking surface.  Examples,
+# benchmarks, and tests intentionally exercise decorator-added runtime
+# attributes and optional solver integrations, so treating an unconfigured
+# repository-wide Pyright invocation as the library's type-health signal
+# produces a large, unstable false-debt count.
+[tool.pyright]
+include = ["src/provably"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+
+# ---------------------------------------------------------------------------
 # Pytest
 # ---------------------------------------------------------------------------
 
