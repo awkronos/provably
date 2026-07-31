@@ -676,6 +676,7 @@ def verify_with_lean4(
     pre_strs: list[str] = []
     post_strs: list[str] = []
     param_list = [param_vars[n] for n in param_names]
+    result_name: str | None = None
 
     if pre is not None:
         try:
@@ -778,6 +779,15 @@ def verify_with_lean4(
 
     # Replace 'result' with the actual function definition body
     if post_lean:
+        if result_name is None:
+            return ProofCertificate(
+                function_name=fname,
+                source_hash=hashlib.sha256(source.encode()).hexdigest()[:16],
+                status=Status.TRANSLATION_ERROR,
+                preconditions=tuple(pre_strs),
+                postconditions=tuple(post_strs),
+                message="Lean4 export invariant failed: postcondition has no result symbol",
+            )
         post_lean = _replace_result_symbol(
             post_lean,
             result_name,
@@ -894,6 +904,7 @@ def export_lean4(
     param_list = [param_vars[n] for n in param_names]
     pre_strs: list[str] = []
     post_strs: list[str] = []
+    result_name: str | None = None
 
     # Soundness: the exporter must refuse to emit an incomplete theorem
     # when the user's pre/post raises. A silently-dropped pre becomes a
@@ -940,6 +951,8 @@ def export_lean4(
     )
 
     if post_lean:
+        if result_name is None:
+            raise ValueError("Lean4 export invariant failed: postcondition has no result symbol")
         post_lean = _replace_result_symbol(
             post_lean,
             result_name,
