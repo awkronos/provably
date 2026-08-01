@@ -167,10 +167,9 @@ def _collect_proof_certificates(config: pytest.Config) -> list[ProofCertificate]
         except TypeError:
             continue
         for obj in objects:
-            if callable(obj) and hasattr(obj, "__proof__"):
-                proof = obj.__proof__
-                if isinstance(proof, PC):
-                    certs[proof.function_name] = proof
+            proof = getattr(obj, "__proof__", None)
+            if callable(obj) and isinstance(proof, PC):
+                certs[proof.function_name] = proof
 
     return list(certs.values())
 
@@ -189,10 +188,9 @@ def _scan_item_for_proofs(item: pytest.Item, certs: dict[str, Any]) -> None:
     except TypeError:
         return
     for obj in objects:
-        if callable(obj) and hasattr(obj, "__proof__"):
-            proof = obj.__proof__
-            if isinstance(proof, PC):
-                certs[proof.function_name] = proof
+        proof = getattr(obj, "__proof__", None)
+        if callable(obj) and isinstance(proof, PC):
+            certs[proof.function_name] = proof
 
 
 @pytest.fixture(scope="session", autouse=True)

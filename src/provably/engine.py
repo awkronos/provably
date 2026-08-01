@@ -44,10 +44,13 @@ logger = logging.getLogger("provably")  # pragma: no cover
 
 # Optional orjson accelerator for disk-cache serialization (3-5x faster than
 # stdlib json for our typical certificate sizes of 200-800 bytes).
+# orjson is an optional extra (the `speed` extra); the import is guarded by
+# try/except, so don't fail typecheck when it isn't installed (mirrors the
+# mypy `ignore_missing_imports` override in pyproject.toml).
 _orjson: Any = None
 _HAS_ORJSON = False
 try:  # pragma: no cover
-    import orjson
+    import orjson  # pyright: ignore[reportMissingImports]
 
     _orjson = orjson
     _HAS_ORJSON = True
@@ -893,9 +896,13 @@ def verify_module(module: _types.ModuleType) -> dict[str, ProofCertificate]:
         except Exception as e:
             logger.debug("attr access failed for %s.%s: %s", module.__name__, attr_name, e)
             continue
-        if callable(obj) and hasattr(obj, "__proof__"):
-            cert: ProofCertificate = obj.__proof__
-            results[cert.function_name] = cert
+        # ``__proof__`` is attached at runtime by the decorators, so it lives
+        # outside the static type of the function object; cross that trust
+        # boundary with getattr + isinstance rather than a blind attribute
+        # access (mirrors pytest_plugin._collect_proofs).
+        proof = getattr(obj, "__proof__", None)
+        if callable(obj) and isinstance(proof, ProofCertificate):
+            results[proof.function_name] = proof
     return results
 
 

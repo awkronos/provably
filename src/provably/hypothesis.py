@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Annotated, Any, get_args, get_origin, get_type_hints
+from typing import Annotated, Any, cast, get_args, get_origin, get_type_hints
 
 from .engine import ProofCertificate, Status, verify_function
 from .types import Between, Ge, Gt, Le, Lt, NotEq
@@ -346,11 +346,14 @@ def hypothesis_check(
 
     tuple_strategy = st.tuples(*param_strategies)
 
-    # suppress_health_check=list(HealthCheck) allows this to be called
-    # from within a pytest test (suppresses nested_given, differing_executors).
+    # suppress_health_check=list of every HealthCheck member allows this to be
+    # called from within a pytest test (suppresses nested_given,
+    # differing_executors).  Iterating an enum class yields its members at
+    # runtime; the cast bridges an inference gap where static analyzers type
+    # list(HealthCheck) as a list over the EnumMeta class object.
     @settings(
         max_examples=max_examples,
-        suppress_health_check=list(HealthCheck),
+        suppress_health_check=cast("list[HealthCheck]", list(HealthCheck)),
         deadline=None,
     )
     @given(args_tuple=tuple_strategy)
