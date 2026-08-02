@@ -688,23 +688,33 @@ class TestPytestPluginModulesScan:
         assert "add_zero" in names
 
     def test_collect_does_not_invoke_dynamic_module_attributes(self) -> None:
-        """The fallback reads module dictionaries without triggering proxies."""
+        """The fallback skips proxy objects that raise on attribute access.
+
+        Real-world scenario: langsmith (a pytest plugin present on some self-hosted
+        runners) stores lazy-proxy objects in its module namespace.  Accessing any
+        attribute on those proxies triggers an import of 'langsmith_api', which
+        may not be installed.  _collect_proof_certificates must catch such
+        exceptions and continue rather than propagating them to the caller.
+        """
         import sys
+        import types as _types
         from unittest.mock import MagicMock
 
         from provably.pytest_plugin import _collect_proof_certificates
 
-        class DynamicModule:
-            safe_value = object()
-
-            def __dir__(self) -> list[str]:
-                return ["deprecated_proxy"]
-
+        # A proxy whose __getattr__ raises for any attribute access (including
+        # "__proof__"), simulating langsmith's _openapi_client lazy resource proxy.
+        class RaisingProxy:
             def __getattr__(self, name: str) -> object:
                 raise AssertionError(f"dynamic attribute {name!r} was accessed")
 
+        # Embed the proxy in a real module's __dict__ so vars(mod) returns it.
+        # This exercises the inner getattr guard in _collect_proof_certificates.
+        mod = _types.ModuleType("__provably_test_dynamic_module__")
+        mod.__dict__["deprecated_proxy"] = RaisingProxy()
+
         sentinel_key = "__provably_test_dynamic_module__"
-        sys.modules[sentinel_key] = DynamicModule()  # type: ignore[assignment]
+        sys.modules[sentinel_key] = mod  # type: ignore[assignment]
         try:
             certs = _collect_proof_certificates(MagicMock(spec=[]))
             assert isinstance(certs, list)
