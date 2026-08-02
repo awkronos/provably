@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "provably"
-version = "0.3.0"
+version = "0.4.0"
 description = "Proof-carrying Python functions via Z3 — annotate, verify, ship."
 readme = "README.md"
 license = "MIT"
@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Quality Assurance",
     "Typing :: Typed",
@@ -48,9 +49,6 @@ docs = [
     "mkdocstrings[python]>=0.24",
     "mkdocs-autorefs>=1.0",
 ]
-
-[project.scripts]
-provably-bench = "scripts.optimal_bench:run"
 
 [project.entry-points."pytest11"]
 provably = "provably.pytest_plugin"
@@ -105,6 +103,27 @@ mypy_path = "src"
 [[tool.mypy.overrides]]
 module = "z3.*"
 ignore_missing_imports = true
+
+# orjson is an optional accelerator (the `speed` extra); the import is guarded
+# at runtime by try/except, so don't fail typecheck when it isn't installed.
+[[tool.mypy.overrides]]
+module = "orjson"
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pyright
+# ---------------------------------------------------------------------------
+# The distributable library is the supported type-checking surface.  Examples,
+# benchmarks, and tests intentionally exercise decorator-added runtime
+# attributes and optional solver integrations, so treating an unconfigured
+# repository-wide Pyright invocation as the library's type-health signal
+# produces a large, unstable false-debt count.
+[tool.pyright]
+include = ["src/provably"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
 
 # ---------------------------------------------------------------------------
 # Pytest

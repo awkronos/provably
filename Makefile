@@ -6,10 +6,10 @@ bench-sota:
 bench: bench-sota
 
 test:
-	pytest tests/
+	$(or $(PYTHON),.venv/bin/python) -m pytest tests/
 
 lint:
 	ruff check src/ tests/
 
 typecheck:
-	mypy src/provably
+	$(or $(PYTHON),.venv/bin/python) -m mypy src/provably

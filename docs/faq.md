@@ -186,6 +186,12 @@ Use cases:
 - **De Bruijn kernel**: Lean4's type checker has a verified kernel, providing a different
   trust basis than Z3's SMT solver.
 
+`verify_with_lean4()` requires an explicit postcondition and validates the
+generated theorem with `#print axioms`. A successful compiler exit is not by
+itself a proof receipt: `sorry`, custom axioms, and missing audit output are
+rejected. The Lean backend intentionally supports a smaller Python subset than
+the Z3 backend and fails closed on unsupported control flow.
+
 When Lean4 is not installed, `verify_with_lean4()` returns a `SKIPPED` certificate.
 Install via: `brew install elan-init && elan default stable`.
 

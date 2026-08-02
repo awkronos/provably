@@ -221,12 +221,14 @@ lean_code = export_lean4(clamp, output_path="clamp.lean")
 
 ## Benchmark
 
-provably's floor is the bare Z3 solve on the same SMT-LIB formula.
-efficiency_pct below 40% means Python/pipeline overhead dominates; above 80% means Z3 is the bottleneck.
+`make bench` proves the same property — ERC-20 transfer overflow safety,
+end-to-end — with provably and with real contract-verification tooling
+(halmos, pysmt-z3, cvc5, raw z3, solc SMTChecker), then compares wall time.
 
 ```bash
 make bench          # writes /tmp/kagami-provably-bench.json
-# {"efficiency_pct": ..., "actual": ..., "theoretical": ..., "unit": "seconds", "workload": "verify_pipeline_vs_bare_z3"}
+# {"actual": ..., "sota": ..., "sota_name": ..., "efficiency_pct": ..., "competitors": [...]}
+# efficiency_pct > 100 means provably beat the fastest competitor.
 ```
 
 ## Links

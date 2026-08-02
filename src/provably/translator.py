@@ -44,7 +44,7 @@ from __future__ import annotations  # pragma: no cover
 
 import ast  # pragma: no cover
 from dataclasses import dataclass, field  # pragma: no cover
-from typing import Any  # pragma: no cover
+from typing import Any, cast  # pragma: no cover
 
 import z3  # pragma: no cover
 
@@ -1109,20 +1109,27 @@ class Translator:
                 f"(line {lineno})"
             )
         range_args = gen.iter.args
-        if len(range_args) == 1:
-            start, stop, step = 0, self._resolve_int(range_args[0]), 1
-        elif len(range_args) == 2:
-            start = self._resolve_int(range_args[0])
-            stop = self._resolve_int(range_args[1])
-            step = 1
-        elif len(range_args) == 3:
-            start = self._resolve_int(range_args[0])
-            stop = self._resolve_int(range_args[1])
-            step = self._resolve_int(range_args[2])
-        else:
+        if not 1 <= len(range_args) <= 3:
+            raise TranslationError(f"range() takes 1-3 args (line {lineno})")
+        try:
+            if len(range_args) == 1:
+                start, stop, step = 0, self._resolve_int(range_args[0]), 1
+            elif len(range_args) == 2:
+                start = self._resolve_int(range_args[0])
+                stop = self._resolve_int(range_args[1])
+                step = 1
+            else:  # 3 args
+                start = self._resolve_int(range_args[0])
+                stop = self._resolve_int(range_args[1])
+                step = self._resolve_int(range_args[2])
+        except TranslationError:
+            # A non-constant / symbolic range bound makes this an unsupported
+            # list comprehension. Surface it as a comprehension error so
+            # callers can detect it (rather than a low-level range() message).
             raise TranslationError(
-                f"range() takes 1-3 args (line {lineno})"
-            )
+                f"List comprehension over range() requires constant integer "
+                f"bounds (line {lineno})"
+            ) from None
         if step == 0:
             raise TranslationError(f"range() step cannot be zero (line {lineno})")
         iterations = list(range(start, stop, step))
@@ -1291,9 +1298,16 @@ class Translator:
             for it in items:
                 s = z3.simplify(it)
                 if z3.is_int_value(s):
-                    concrete.append((s.as_long(), z3.IntVal(s.as_long())))
+                    # z3's stubs do not express that is_int_value narrows its
+                    # broad ExprRef union. The predicate is the runtime proof
+                    # that this expression has IntNumRef's numeric API.
+                    int_value = cast(z3.IntNumRef, s)
+                    concrete.append((int_value.as_long(), z3.IntVal(int_value.as_long())))
                 elif z3.is_rational_value(s):
-                    frac = s.as_fraction()
+                    # As above, is_rational_value establishes RatNumRef before
+                    # accessing its rational-literal representation.
+                    rational_value = cast(z3.RatNumRef, s)
+                    frac = rational_value.as_fraction()
                     key = float(frac.numerator) / float(frac.denominator)
                     concrete.append((key, s))
                 else:
@@ -1332,10 +1346,12 @@ class Translator:
                         out.append(it)
                     elif z3.is_false(s):
                         continue
-                    elif z3.is_int_value(s) and s.as_long() != 0:
-                        out.append(it)
-                    elif z3.is_int_value(s) and s.as_long() == 0:
-                        continue
+                    elif z3.is_int_value(s):
+                        int_value = cast(z3.IntNumRef, s)
+                        if int_value.as_long() != 0:
+                            out.append(it)
+                        else:
+                            continue
                     else:
                         raise TranslationError(
                             f"filter(None, ...) requires concrete boolean/int values "
@@ -1370,7 +1386,9 @@ class Translator:
                     f"len() takes exactly 1 argument (line {getattr(node, 'lineno', '?')})"
                 )
             len_fn = z3.Function("__len", args[0].sort(), z3.IntSort())
-            result = len_fn(args[0])
+            # The declared range is IntSort; the Z3 stubs nevertheless expose
+            # function application as a broad expression union.
+            result = cast(z3.ArithRef, len_fn(args[0]))
             self._constraints.append(result >= 0)  # len is always non-negative
             return result
 

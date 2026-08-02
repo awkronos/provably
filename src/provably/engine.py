@@ -44,20 +44,26 @@ logger = logging.getLogger("provably")  # pragma: no cover
 
 # Optional orjson accelerator for disk-cache serialization (3-5x faster than
 # stdlib json for our typical certificate sizes of 200-800 bytes).
+# orjson is an optional extra (the `speed` extra); the import is guarded by
+# try/except, so don't fail typecheck when it isn't installed (mirrors the
+# mypy `ignore_missing_imports` override in pyproject.toml).
+_orjson: Any = None
+_HAS_ORJSON = False
 try:  # pragma: no cover
-    import orjson as _orjson
+    import orjson  # pyright: ignore[reportMissingImports]
 
+    _orjson = orjson
     _HAS_ORJSON = True
 except ImportError:  # pragma: no cover
-    _orjson = None  # type: ignore[assignment]
-    _HAS_ORJSON = False
+    pass
 
 # ---------------------------------------------------------------------------
 # Global configuration
 # ---------------------------------------------------------------------------
 
 _config: dict[str, Any] = {  # pragma: no cover
-    "timeout_ms": 5000,
+    "timeout_ms": 60_000,
+    "rlimit": 100_000_000,
     "raise_on_failure": False,
     "log_level": "WARNING",
     "cache_dir": str(Path.home() / ".provably" / "cache"),
@@ -69,7 +75,13 @@ def configure(**kwargs: Any) -> None:
 
     Supported keys:
 
-    - ``timeout_ms`` (int): Z3 solver timeout in milliseconds (default 5000).
+    - ``timeout_ms`` (int): Z3 wall-clock timeout in milliseconds (default
+      60000). This is a starvation backstop only — it is load-fragile, so the
+      primary bound is ``rlimit``.
+    - ``rlimit`` (int): Z3 resource limit in deterministic resource units
+      (default 100_000_000). Unlike wall-clock timeouts this is independent
+      of machine load: a query that consumes N units on an idle machine
+      consumes the same N units under load. Set to ``0`` to disable.
     - ``raise_on_failure`` (bool): Raise :class:`~provably.decorators.VerificationError`
       when a proof fails (default ``False``).
     - ``log_level`` (str): Python logging level for the ``provably`` logger
@@ -550,8 +562,10 @@ def verify_function(
         pre: Precondition lambda taking the same args as *func*.
              Use ``&`` instead of ``and``, ``|`` instead of ``or``.
         post: Postcondition lambda taking ``(*args, result)``.
-        timeout_ms: Z3 solver timeout in milliseconds.  Defaults to
-            the global ``timeout_ms`` set via :func:`configure` (5000ms).
+        timeout_ms: Z3 solver wall-clock timeout in milliseconds.  Defaults to
+            the global ``timeout_ms`` set via :func:`configure` (60000ms).
+            This is a starvation backstop; the deterministic bound is the
+            global ``rlimit`` (resource units, load-independent).
         verified_contracts: Contracts of called functions for composition.
 
     Returns:
@@ -665,9 +679,16 @@ def verify_function(
         _proof_cache[cache_key] = cert
         return cert
 
-    # Build solver
+    # Build solver. The deterministic bound is Z3's resource limit (rlimit),
+    # which is machine-load-independent; the wall-clock timeout is a
+    # starvation backstop for pathological scheduling only. A query that
+    # consumes N rlimit units on an idle machine consumes the same N under
+    # load, so an UNKNOWN under rlimit means "hard query", not "slow host".
     s = z3.Solver()
     s.set("timeout", timeout_ms)
+    rlimit = int(_config.get("rlimit") or 0)
+    if rlimit > 0:
+        s.set("rlimit", rlimit)
 
     # 1. Add preconditions
     pre_strs: list[str] = []
@@ -826,7 +847,10 @@ def verify_function(
             preconditions=tuple(pre_strs),
             postconditions=tuple(post_strs),
             solver_time_ms=elapsed,
-            message=f"Z3 returned unknown (timeout {timeout_ms}ms?)",
+            message=(
+                f"Z3 returned unknown (timeout {timeout_ms}ms or "
+                f"rlimit {rlimit} exhausted?)"
+            ),
             z3_version=z3_ver,
         )
 
@@ -872,9 +896,13 @@ def verify_module(module: _types.ModuleType) -> dict[str, ProofCertificate]:
         except Exception as e:
             logger.debug("attr access failed for %s.%s: %s", module.__name__, attr_name, e)
             continue
-        if callable(obj) and hasattr(obj, "__proof__"):
-            cert: ProofCertificate = obj.__proof__
-            results[cert.function_name] = cert
+        # ``__proof__`` is attached at runtime by the decorators, so it lives
+        # outside the static type of the function object; cross that trust
+        # boundary with getattr + isinstance rather than a blind attribute
+        # access (mirrors pytest_plugin._collect_proofs).
+        proof = getattr(obj, "__proof__", None)
+        if callable(obj) and isinstance(proof, ProofCertificate):
+            results[proof.function_name] = proof
     return results
 
 
@@ -932,7 +960,12 @@ def _z3_val_to_python(val: Any) -> int | float | bool | str:
             return False
     except (AttributeError, ValueError, ArithmeticError, OverflowError):
         pass
-    return str(val)
+    try:
+        return str(val)
+    except Exception:
+        # val's own __repr__/__str__ is broken — fall back to a type label so
+        # the caller still gets a plain string (never propagates).
+        return f"<unrepresentable {type(val).__name__}>"
 
 
 def _resolve_closure_vars(

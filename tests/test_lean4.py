@@ -9,6 +9,7 @@ from provably.lean4 import (
     LEAN4_VERSION,
     _expr_to_lean,
     _z3_str_to_lean,
+    check_lean4_proof,
     export_lean4,
     generate_lean4_theorem,
     verify_with_lean4,
@@ -54,6 +55,9 @@ class TestZ3StrToLean:
         result = _z3_str_to_lean("And(x >= 0, x <= 1)", ["x"])
         assert "≥" in result
         assert "≤" in result
+
+    def test_equality_conversion_uses_propositional_equality(self) -> None:
+        assert _z3_str_to_lean("result == x", ["x"]) == "result = x"
 
 
 class TestGenerateTheorem:
@@ -271,3 +275,219 @@ class TestLean4CoreMode:
                 assert reported.issubset(allowed), f"Unexpected axioms: {reported - allowed}"
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+
+class TestLean4FailClosed:
+    """Regression checks for admitted or missing proof obligations."""
+
+    def test_sorry_placeholder_is_rejected(self) -> None:
+        ok, output = check_lean4_proof("theorem fake : False := by sorry\n", theorem_name="fake")
+        assert ok is False
+        assert "placeholder" in output
+
+    def test_no_postcondition_never_verifies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from provably import lean4 as lean4_module
+        from provably.engine import Status
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+
+        def identity(x: int) -> int:
+            return x
+
+        certificate = lean4_module.verify_with_lean4(identity)
+        assert certificate.status == Status.SKIPPED
+        assert certificate.verified is False
+        assert "postcondition" in certificate.message
+
+    def test_nonsymbolic_postcondition_is_translation_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from provably import lean4 as lean4_module
+        from provably.engine import Status
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+
+        def identity(x: int) -> int:
+            return x
+
+        certificate = lean4_module.verify_with_lean4(identity, post=lambda x, result: True)
+        assert certificate.status == Status.TRANSLATION_ERROR
+        assert certificate.verified is False
+
+    def test_fallthrough_return_is_total_without_placeholder(self) -> None:
+        source = (
+            "def clamp(x: int, lo: int, hi: int) -> int:\n"
+            "    if x < lo:\n"
+            "        return lo\n"
+            "    elif x > hi:\n"
+            "        return hi\n"
+            "    return x\n"
+        )
+        lean = generate_lean4_theorem(
+            "clamp",
+            ["x", "lo", "hi"],
+            {"x": int, "lo": int, "hi": int},
+            "lo ≤ hi",
+            "lo ≤ clamp_impl x lo hi ∧ clamp_impl x lo hi ≤ hi",
+            source,
+        )
+        assert "else sorry" not in lean
+        assert ":= sorry" not in lean
+        assert "if x < lo then" in lean
+        assert "if x > hi then" in lean
+
+    def test_export_rejects_pass_only_body(self) -> None:
+        def incomplete(x: int) -> int:
+            pass
+
+        with pytest.raises(ValueError, match="every control-flow path"):
+            export_lean4(incomplete, post=lambda x, result: result == x)
+
+    def test_export_preserves_parameter_named_result(self) -> None:
+        def increment(result: int) -> int:
+            return result + 1
+
+        lean = export_lean4(
+            increment,
+            post=lambda result, returned: returned == result + 1,
+        )
+
+        assert "(increment_impl result) = result + 1" in lean
+        assert "increment_impl (increment_impl" not in lean
+
+    def test_core_integer_true_division_is_rejected(self) -> None:
+        source = "def half(x: int) -> int:\n    return x / 2\n"
+        with pytest.raises(ValueError, match="Python `/`"):
+            generate_lean4_theorem(
+                "half",
+                ["x"],
+                {"x": int},
+                None,
+                "half_impl x = x",
+                source,
+            )
+
+    def test_attribute_builtin_call_is_rejected(self) -> None:
+        source = "def magnitude(x: int) -> int:\n    return math.abs(x)\n"
+        with pytest.raises(ValueError, match="Unsupported Lean4 call"):
+            generate_lean4_theorem(
+                "magnitude",
+                ["x"],
+                {"x": int},
+                None,
+                "magnitude_impl x ≥ 0",
+                source,
+            )
+
+    def test_annotated_integer_types_stay_in_core_mode(self) -> None:
+        from typing import Annotated
+
+        from provably.types import Ge
+
+        def identity(x: Annotated[int, Ge(0)]) -> Annotated[int, Ge(0)]:
+            return x
+
+        lean = export_lean4(identity, post=lambda x, returned: returned == x)
+
+        assert "Mode: core" in lean
+        assert "(x : Int) : Int" in lean
+        assert "import Mathlib" not in lean
+
+    def test_axiom_audit_rejects_custom_axiom(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import subprocess
+
+        from provably import lean4 as lean4_module
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+        monkeypatch.setattr(lean4_module.secrets, "token_hex", lambda _: "testtoken")
+        result = subprocess.CompletedProcess(
+            args=["lean"],
+            returncode=0,
+            stdout=(
+                "__PROVABLY_AXIOM_AUDIT_BEGIN_testtoken__\n"
+                "'checked' depends on axioms: [customTrust]\n"
+                "__PROVABLY_AXIOM_AUDIT_END_testtoken__\n"
+            ),
+            stderr="",
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
+        ok, output = lean4_module.check_lean4_proof(
+            "theorem checked : True := by trivial\n",
+            theorem_name="checked",
+        )
+        assert ok is False
+        assert "disallowed axioms" in output
+
+    def test_axiom_audit_rejects_spoofed_output_before_marker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import subprocess
+
+        from provably import lean4 as lean4_module
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+        monkeypatch.setattr(lean4_module.secrets, "token_hex", lambda _: "testtoken")
+        result = subprocess.CompletedProcess(
+            args=["lean"],
+            returncode=0,
+            stdout=(
+                "'checked' depends on axioms: [propext]\n"
+                "__PROVABLY_AXIOM_AUDIT_BEGIN_testtoken__\n"
+                "'checked' depends on axioms: [customTrust]\n"
+                "__PROVABLY_AXIOM_AUDIT_END_testtoken__\n"
+            ),
+            stderr="",
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
+        ok, output = lean4_module.check_lean4_proof(
+            'theorem checked : True := by trivial\n#eval IO.println "spoof"\n',
+            theorem_name="checked",
+        )
+        assert ok is False
+        assert "customTrust" in output
+
+    def test_native_decide_trust_requires_explicit_opt_in(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import subprocess
+
+        from provably import lean4 as lean4_module
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+        monkeypatch.setattr(lean4_module.secrets, "token_hex", lambda _: "testtoken")
+        result = subprocess.CompletedProcess(
+            args=["lean"],
+            returncode=0,
+            stdout=(
+                "__PROVABLY_AXIOM_AUDIT_BEGIN_testtoken__\n"
+                "'checked' depends on axioms: [Lean.ofReduceBool, Lean.trustCompiler]\n"
+                "__PROVABLY_AXIOM_AUDIT_END_testtoken__\n"
+            ),
+            stderr="",
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
+        code = "theorem checked : True := by native_decide\n"
+
+        rejected, output = lean4_module.check_lean4_proof(code, theorem_name="checked")
+        accepted, _ = lean4_module.check_lean4_proof(
+            code,
+            theorem_name="checked",
+            allow_native_decide=True,
+        )
+
+        assert rejected is False
+        assert "Lean.trustCompiler" in output
+        assert accepted is True
+
+    def test_axiom_audit_rejects_invalid_theorem_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from provably import lean4 as lean4_module
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", True)
+        ok, output = lean4_module.check_lean4_proof(
+            "theorem checked : True := by trivial\n",
+            theorem_name='checked\n#eval IO.println "forged"',
+        )
+        assert ok is False
+        assert "Invalid Lean4 theorem name" in output

@@ -129,8 +129,11 @@ def bench_provably() -> dict[str, Any]:
     from provably.engine import verify_function
 
     # Must use z3.And so provably's engine receives Z3 expressions, not Python booleans
-    pre = lambda balance, value: _z3.And(balance >= 0, value >= 0, value <= balance)
-    post = lambda balance, value, result: _z3.And(result == balance - value, result >= 0)
+    def pre(balance: Any, value: Any) -> Any:
+        return _z3.And(balance >= 0, value >= 0, value <= balance)
+
+    def post(balance: Any, value: Any, result: Any) -> Any:
+        return _z3.And(result == balance - value, result >= 0)
 
     samples: list[float] = []
     errors: list[str] = []

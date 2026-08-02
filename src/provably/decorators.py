@@ -183,8 +183,9 @@ def verified(
         post: Postcondition lambda — takes ``(*args, result)``.
         raise_on_failure: If ``True``, raise :class:`VerificationError` when
             the proof fails.  Defaults to the global setting (``False``).
-        timeout_ms: Z3 solver timeout in milliseconds.  Defaults to the
-            global setting (5000ms).
+        timeout_ms: Z3 solver wall-clock timeout in milliseconds.  Defaults to
+            the global setting (60000ms); the deterministic bound is the
+            global ``rlimit`` (see :func:`~provably.engine.configure`).
         contracts: Pre/post contracts of functions called inside *func*,
             keyed by function name.  Enables modular verification.
         check_contracts: If ``True``, the wrapper also performs a runtime
@@ -218,7 +219,7 @@ def verified(
     if raise_on_failure is None:
         raise_on_failure = bool(_config.get("raise_on_failure", False))
     if timeout_ms is None:
-        timeout_ms = int(_config.get("timeout_ms", 5000))
+        timeout_ms = int(_config.get("timeout_ms", 60_000))
 
     if func is not None:
         # Bare @verified usage

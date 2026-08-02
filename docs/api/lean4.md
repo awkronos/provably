@@ -53,10 +53,18 @@ cert.solver_time_ms  # wall-clock ms in lean
 |---|---|---|---|
 | `func` | `Callable` | required | The function to verify |
 | `pre` | `Callable \| None` | `None` | Precondition lambda |
-| `post` | `Callable \| None` | `None` | Postcondition lambda |
+| `post` | `Callable \| None` | `None` | Postcondition lambda; required for a proof certificate |
 | `timeout_s` | `float` | `60.0` | Lean4 type-check timeout in seconds |
 
 When Lean4 is not installed, returns a `SKIPPED` certificate with an installation hint.
+When `post` is omitted, it also returns `SKIPPED`: compiling a definition without
+a proposition is not verification. Contract lambdas must produce symbolic Boolean
+expressions; plain Python booleans are rejected.
+
+A `VERIFIED` result requires both a successful compiler exit and a raw
+`#print axioms` result restricted to Lean's foundational axioms. Generated or
+compiler-reported `sorry`, `sorryAx`, custom axioms, missing audit output, and
+incomplete control-flow paths all fail closed.
 
 ---
 
@@ -88,7 +96,9 @@ print(lean_code)
 | `post` | `Callable \| None` | `None` | Postcondition lambda |
 | `output_path` | `str \| Path \| None` | `None` | Write Lean4 source to this path |
 
-Does not require Lean4 to be installed (generates code only).
+Does not require Lean4 to be installed (generates code only). Incomplete
+control flow and admitted placeholders raise `ValueError` instead of emitting
+a theorem-shaped scaffold.
 
 ---
 
@@ -100,16 +110,21 @@ The Lean4 backend follows the same flow as the Z3 backend:
 2. Generate Lean4 `noncomputable def` from the function body
 3. Generate `theorem ... := by unfold; split_ifs <;> nlinarith`
 4. Write to a temp `.lean` file
-5. Run `lean` to type-check
-6. Return `ProofCertificate` with outcome
+5. Run `lean` to type-check and append `#print axioms` for the generated theorem
+6. Reject admitted or unexpected axioms; return `ProofCertificate` with outcome
 
 ---
 
 ## Limitations
 
-- Same arithmetic subset as Z3 translator (no recursion, no data structures)
-- Transcendental functions (`exp`, `cos`, `log`) are axiomatized
-- For-loop unrolling produces verbose Lean4 proofs
+- A strict subset of the Z3 translator: terminating returns, assignments,
+  conditionals, and basic arithmetic expressions
+- Unsupported/incomplete branches, loops, recursion, data structures, and
+  transcendental calls are rejected
+- Integer `/`, floor-division, and remainder are rejected until Python and
+  Lean numeric semantics are connected by explicit correctness theorems
+- Python `float` follows Provably's documented mathematical-real model (`ℝ`),
+  not IEEE-754 rounding, NaN, or overflow behavior
 - Slower than Z3 (compiles to native code)
 - Requires Lean4 + Mathlib for `nlinarith` tactic
 

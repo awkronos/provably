@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0 (2026-07-11)
+
+Release-prep cut (A+ publish-readiness pass): 0.3.0 is already live on
+PyPI, and this repo had 29 commits ahead of the `v0.3.0` tag with no
+version bump — publishing right now would fail PyPI's "file already
+exists" check. This entry summarizes those commits at a high level;
+Tim may prefer a different version number before the actual upload.
+
+### Added
+- Succinct proof-carrying certificates: SP1 proof-carrying certs bridged
+  from Z3-verified contracts (`succinct` feature area).
+- Tuple counterexamples now display as Python tuples, not tuple-ids.
+
+### Fixed
+- Kernel-clean core mode for Int/Bool functions in the Lean 4 export.
+- Tuple subscript now routes through the correct accessor.
+- While-loop budget exhaustion no longer vacuously verifies (soundness fix).
+- Honest bench timing; removed a deprecated `strict` param.
+
+### Changed
+- Test coverage 88% -> 92%+ (CI gate raised to 90%, measured baseline 93%).
+- Docs: added `provably.hypothesis` API page, CONTRIBUTING.md, fixed
+  non-verifying README/doc examples.
+- CI moved to self-hosted runner (spend reduction).
+
 ## 0.3.0 (2026-02-28)
 
 ### While loops

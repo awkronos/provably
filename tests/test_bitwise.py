@@ -103,7 +103,11 @@ class TestBitwiseInVerified:
     def test_bitand_identity_via_mask_verifies(self) -> None:
         from provably import verified
 
-        @verified(pre=lambda x: (x >= 0) & (x < 256), post=lambda x, result: result == x)
+        @verified(
+            pre=lambda x: (x >= 0) & (x < 256),
+            post=lambda x, result: result == x,
+            timeout_ms=30000,
+        )
         def identity_via_bitand(x: int) -> int:
             return x & 255
 
@@ -115,6 +119,7 @@ class TestBitwiseInVerified:
         @verified(
             pre=lambda x: (x >= 0) & (x < 1024),
             post=lambda x, result: result == 2 * x,
+            timeout_ms=30000,
         )
         def double_via_lshift(x: int) -> int:
             return x << 1

@@ -29,7 +29,7 @@ Optional extras
 
 from __future__ import annotations  # pragma: no cover
 
-__version__ = "0.3.0"  # pragma: no cover
+__version__ = "0.4.0"  # pragma: no cover
 
 from z3 import And, Implies, Not, Or  # pragma: no cover
 

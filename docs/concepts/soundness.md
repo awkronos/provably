@@ -75,7 +75,9 @@ the contract is wrong.
 !!! note "Lean4 backend"
     provably can generate Lean4 theorem files from `@verified` functions via `export_lean4()`,
     or verify directly via `verify_with_lean4()`. This provides an independent proof oracle
-    cross-checking Z3 results. See [FAQ](../faq.md#can-provably-use-lean4-instead-of-z3).
+    cross-checking Z3 results. A Lean certificate is accepted only after a raw axiom audit;
+    admitted placeholders, custom axioms, missing postconditions, and unsupported control-flow
+    paths are rejected. See [FAQ](../faq.md#can-provably-use-lean4-instead-of-z3).
 
 ## The core guarantee
 

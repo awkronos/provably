@@ -17,9 +17,9 @@ Requirements:
     - No Mathlib needed for basic arithmetic theorems (uses Lean4 stdlib)
 
 Limitations:
-    - Only supports the same arithmetic subset as the Z3 translator
-    - Transcendental functions (exp, cos, log) are axiomatized
-    - For-loop unrolling produces verbose proofs
+    - Supports a strict arithmetic/control-flow subset, smaller than the Z3 backend
+    - Unsupported or non-total control flow is rejected rather than admitted
+    - Transcendental functions, loops, recursion, and data structures are not supported
     - Slower than Z3 (compiles to native code)
 """
 
@@ -28,6 +28,8 @@ from __future__ import annotations  # pragma: no cover
 import ast  # pragma: no cover
 import hashlib  # pragma: no cover
 import inspect  # pragma: no cover
+import re  # pragma: no cover
+import secrets  # pragma: no cover
 import subprocess  # pragma: no cover
 import tempfile  # pragma: no cover
 import textwrap  # pragma: no cover
@@ -71,6 +73,32 @@ def _py_type_to_lean(typ: type | None) -> str:
     return "Float"
 
 
+def _base_python_type(typ: Any | None) -> Any | None:
+    """Strip ``Annotated``-style metadata from a runtime type hint."""
+    origin = getattr(typ, "__origin__", None)
+    return origin if origin in (int, float, bool) else typ
+
+
+def _ast_annotation_type(annotation: ast.expr | None) -> type | None:
+    """Recover a supported base type from a source-level annotation."""
+    if isinstance(annotation, ast.Name):
+        return {"int": int, "float": float, "bool": bool}.get(annotation.id)
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        return {"int": int, "float": float, "bool": bool}.get(annotation.value)
+    if isinstance(annotation, ast.Subscript):
+        annotation_head = annotation.value
+        is_annotated = (
+            isinstance(annotation_head, ast.Name) and annotation_head.id == "Annotated"
+        ) or (isinstance(annotation_head, ast.Attribute) and annotation_head.attr == "Annotated")
+        if not is_annotated:
+            return None
+        slice_node = annotation.slice
+        if isinstance(slice_node, ast.Tuple) and slice_node.elts:
+            return _ast_annotation_type(slice_node.elts[0])
+        return _ast_annotation_type(slice_node)
+    return None
+
+
 def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
     """Translate a Python AST expression to Lean4 syntax."""
     if env is None:
@@ -83,9 +111,11 @@ def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
         if isinstance(v, int):
             return str(v)
         if isinstance(v, float):
-            # Lean4 float literal
-            return f"({v} : Float)"
-        return str(v)
+            # Decimal notation is polymorphic in Lean.  The surrounding
+            # implementation type determines ℝ; forcing ``Float`` here made
+            # the mathlib-mode definition ill-typed.
+            return str(v)
+        raise ValueError(f"Unsupported Lean4 constant: {v!r}")
 
     if isinstance(node, ast.Name):
         return env.get(node.id, node.id)
@@ -98,10 +128,10 @@ def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
             ast.Sub: "-",
             ast.Mult: "*",
             ast.Div: "/",
-            ast.FloorDiv: "/",
-            ast.Mod: "%",
         }
-        op = op_map.get(type(node.op), "?")
+        op = op_map.get(type(node.op))
+        if op is None:
+            raise ValueError(f"Unsupported Lean4 binary operator: {type(node.op).__name__}")
         return f"({left} {op} {right})"
 
     if isinstance(node, ast.UnaryOp):
@@ -110,7 +140,7 @@ def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
             return f"(-{operand})"
         if isinstance(node.op, ast.Not):
             return f"(¬ {operand})"
-        return operand
+        raise ValueError(f"Unsupported Lean4 unary operator: {type(node.op).__name__}")
 
     if isinstance(node, ast.Compare):
         parts = []
@@ -125,7 +155,9 @@ def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
         }
         for cmp_op, comparator in zip(node.ops, node.comparators, strict=False):
             right = _expr_to_lean(comparator, env)
-            sym = cmp_map.get(type(cmp_op), "?")
+            sym = cmp_map.get(type(cmp_op))
+            if sym is None:
+                raise ValueError(f"Unsupported Lean4 comparison operator: {type(cmp_op).__name__}")
             parts.append(f"{left} {sym} {right}")
             left = right
         if len(parts) == 1:
@@ -145,100 +177,108 @@ def _expr_to_lean(node: ast.expr, env: dict[str, str] | None = None) -> str:
         return f"(if {test} then {body} else {orelse})"
 
     if isinstance(node, ast.Call):
-        func_name = ""
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            func_name = node.func.attr
+        if not isinstance(node.func, ast.Name):
+            raise ValueError(f"Unsupported Lean4 call: {ast.dump(node.func)}")
+        func_name = node.func.id
         args = [_expr_to_lean(a, env) for a in node.args]
         builtin_map = {
             "min": lambda a: f"(min {a[0]} {a[1]})" if len(a) == 2 else f"min {' '.join(a)}",
             "max": lambda a: f"(max {a[0]} {a[1]})" if len(a) == 2 else f"max {' '.join(a)}",
             "abs": lambda a: f"(|{a[0]}|)" if len(a) == 1 else f"abs {' '.join(a)}",
         }
-        if func_name in builtin_map:
-            return builtin_map[func_name](args)
-        return f"({func_name} {' '.join(args)})"
+        expected_arity = {"min": 2, "max": 2, "abs": 1}
+        if func_name not in builtin_map:
+            raise ValueError(f"Unsupported Lean4 call: {func_name or ast.dump(node.func)}")
+        if len(args) != expected_arity[func_name]:
+            raise ValueError(
+                f"Lean4 call {func_name} expects {expected_arity[func_name]} argument(s)"
+            )
+        return builtin_map[func_name](args)
 
-    return f"sorry /- unsupported: {ast.dump(node)} -/"
+    raise ValueError(f"Unsupported Lean4 expression: {type(node).__name__}")
 
 
 def _if_to_lean(stmt: ast.If, env: dict[str, str]) -> str:
-    """Recursively translate if/elif/else chains to Lean4."""
-    test = _expr_to_lean(stmt.test, env)
+    """Translate a standalone if/elif/else expression.
 
-    # Extract then-branch return
-    then_ret = None
-    for s in stmt.body:
-        if isinstance(s, ast.Return) and s.value is not None:
-            then_ret = _expr_to_lean(s.value, env)
-            break
+    A branch without a return is rejected.  Generating a Lean ``sorry`` here
+    used to let the compiler exit successfully and could therefore create a
+    false ``VERIFIED`` certificate.
+    """
+    return _statements_to_lean([stmt], env)
 
-    # Extract else-branch (may be elif chain or return)
-    else_ret = None
-    if stmt.orelse:
-        if len(stmt.orelse) == 1 and isinstance(stmt.orelse[0], ast.If):
-            # elif chain — RECURSE
-            else_ret = _if_to_lean(stmt.orelse[0], env)
-        else:
-            for s in stmt.orelse:
-                if isinstance(s, ast.Return) and s.value is not None:
-                    else_ret = _expr_to_lean(s.value, env)
-                    break
 
-    if then_ret and else_ret:
-        return f"if {test} then {then_ret} else {else_ret}"
-    elif then_ret:
-        return f"if {test} then {then_ret} else sorry"
-    elif else_ret:
-        return f"if {test} then sorry else {else_ret}"
-    return "sorry"
+def _statements_to_lean(statements: list[ast.stmt], env: dict[str, str]) -> str:
+    """Translate a terminating statement sequence to one Lean term.
+
+    The continuation is threaded into both sides of an ``if``.  This preserves
+    Python fall-through such as ``if ...: return a; return b`` without an
+    incomplete branch placeholder.
+    """
+    if not statements:
+        raise ValueError("Lean4 translation requires every control-flow path to return")
+
+    stmt, *rest = statements
+    if isinstance(stmt, ast.Return):
+        if stmt.value is None:
+            raise ValueError("Lean4 backend does not support bare return")
+        return _expr_to_lean(stmt.value, env)
+
+    if isinstance(stmt, ast.If):
+        test = _expr_to_lean(stmt.test, env)
+        then_term = _statements_to_lean([*stmt.body, *rest], env.copy())
+        else_term = _statements_to_lean([*stmt.orelse, *rest], env.copy())
+        return f"if {test} then {then_term} else {else_term}"
+
+    if isinstance(stmt, ast.Assign):
+        next_env = env.copy()
+        bindings: list[tuple[str, str]] = []
+        for target in stmt.targets:
+            if not isinstance(target, ast.Name):
+                raise ValueError("Lean4 backend only supports assignment to local names")
+            value = _expr_to_lean(stmt.value, next_env)
+            next_env[target.id] = target.id
+            bindings.append((target.id, value))
+        tail = _statements_to_lean(rest, next_env)
+        for name, value in reversed(bindings):
+            tail = f"let {name} := {value}\n  {tail}"
+        return tail
+
+    if isinstance(stmt, ast.AnnAssign):
+        if stmt.value is None or not isinstance(stmt.target, ast.Name):
+            raise ValueError("Lean4 backend requires a named initialized annotation")
+        value = _expr_to_lean(stmt.value, env)
+        next_env = env.copy()
+        next_env[stmt.target.id] = stmt.target.id
+        return f"let {stmt.target.id} := {value}\n  {_statements_to_lean(rest, next_env)}"
+
+    if isinstance(stmt, ast.AugAssign):
+        if not isinstance(stmt.target, ast.Name):
+            raise ValueError("Lean4 backend only supports augmented assignment to local names")
+        op_map = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/"}
+        op = op_map.get(type(stmt.op))
+        if op is None:
+            raise ValueError(f"Unsupported augmented assignment: {type(stmt.op).__name__}")
+        name = stmt.target.id
+        current = env.get(name, name)
+        value = _expr_to_lean(stmt.value, env)
+        next_env = env.copy()
+        next_env[name] = name
+        return f"let {name} := ({current} {op} {value})\n  {_statements_to_lean(rest, next_env)}"
+
+    if isinstance(stmt, ast.Pass) or (
+        isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Constant)
+        and isinstance(stmt.value.value, str)
+    ):
+        return _statements_to_lean(rest, env)
+
+    raise ValueError(f"Unsupported Lean4 statement: {type(stmt).__name__}")
 
 
 def _func_body_to_lean(func_ast: ast.FunctionDef, env: dict[str, str]) -> str:
     """Translate function body to a Lean4 definition body."""
-    lines = []
-    for stmt in func_ast.body:
-        if isinstance(stmt, ast.Return) and stmt.value is not None:
-            lines.append(_expr_to_lean(stmt.value, env))
-        elif isinstance(stmt, ast.If):
-            lines.append(_if_to_lean(stmt, env))
-        elif isinstance(stmt, ast.Assign):
-            for target in stmt.targets:
-                if isinstance(target, ast.Name):
-                    val = _expr_to_lean(stmt.value, env)
-                    env[target.id] = val
-                    lines.append(f"let {target.id} := {val}")
-        elif isinstance(stmt, ast.AugAssign):
-            if isinstance(stmt.target, ast.Name):
-                name = stmt.target.id
-                val = _expr_to_lean(stmt.value, env)
-                op_map = {
-                    ast.Add: "+",
-                    ast.Sub: "-",
-                    ast.Mult: "*",
-                    ast.Div: "/",
-                    ast.Mod: "%",
-                }
-                op = op_map.get(type(stmt.op), "+")
-                current = env.get(name, name)
-                new_val = f"({current} {op} {val})"
-                env[name] = new_val
-                lines.append(f"let {name} := {new_val}")
-        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
-            if isinstance(stmt.target, ast.Name):
-                val = _expr_to_lean(stmt.value, env)
-                env[stmt.target.id] = val
-                lines.append(f"let {stmt.target.id} := {val}")
-        elif (
-            isinstance(stmt, ast.Expr)
-            and isinstance(stmt.value, ast.Constant)
-            and isinstance(stmt.value.value, str)
-        ):
-            continue
-        elif isinstance(stmt, ast.Pass):
-            lines.append("skip")
-    return "\n  ".join(lines) if lines else "sorry"
+    return _statements_to_lean(func_ast.body, env.copy())
 
 
 # =============================================================================
@@ -253,6 +293,7 @@ def generate_lean4_theorem(
     pre_str: str | None,
     post_str: str | None,
     source: str,
+    return_type: type | None = None,
 ) -> str:
     """Generate a complete Lean4 file with theorem statement + proof attempt.
 
@@ -273,22 +314,25 @@ def generate_lean4_theorem(
     tree = ast.parse(source)
     func_ast = tree.body[0]
     if not isinstance(func_ast, ast.FunctionDef):
-        return "-- Error: not a function definition\nsorry"
+        raise ValueError("Lean4 translation source is not a function definition")
 
     # Pick the output mode from parameter types.
-    all_int_or_bool = all(param_types.get(name, float) in (int, bool) for name in param_names)
-    # Crude return-type check — the decorator already filters out
-    # unsupported annotations so ``float`` is the only 'must use ℝ'.
-    ret_hint: type | None = None
-    returns = getattr(func_ast, "returns", None)
-    if isinstance(returns, ast.Name):
-        if returns.id == "int":
-            ret_hint = int
-        elif returns.id == "bool":
-            ret_hint = bool
-        elif returns.id == "float":
-            ret_hint = float
+    all_int_or_bool = all(
+        _base_python_type(param_types.get(name, float)) in (int, bool) for name in param_names
+    )
+    ret_hint = _base_python_type(return_type)
+    if ret_hint not in (int, float, bool):
+        ret_hint = _ast_annotation_type(getattr(func_ast, "returns", None))
     core_mode = all_int_or_bool and ret_hint in (int, bool, None)
+    if core_mode and any(
+        (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div))
+        or (isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Div))
+        for node in ast.walk(func_ast)
+    ):
+        raise ValueError(
+            "Lean4 core mode rejects Python `/`: Python integer operands produce a float, "
+            "while Lean Int division has different semantics"
+        )
 
     params = []
     for name in param_names:
@@ -302,7 +346,7 @@ def generate_lean4_theorem(
     env = {n: n for n in param_names}
     body = _func_body_to_lean(func_ast, env)
 
-    return_type = (
+    lean_return_type = (
         "Int"
         if core_mode and ret_hint is int
         else "Bool"
@@ -324,7 +368,7 @@ def generate_lean4_theorem(
         lean_lines.append("")
     lean_lines.extend(
         [
-            f"{def_kw} {func_name}_impl {param_decl} : {return_type} :=",
+            f"{def_kw} {func_name}_impl {param_decl} : {lean_return_type} :=",
             f"  {body}",
             "",
         ]
@@ -378,31 +422,51 @@ def _z3_str_to_lean(z3_str: str, param_names: list[str]) -> str:
     Z3 outputs like: And(x >= 0, x <= 1)
     Lean4 wants: (x ≥ 0) ∧ (x ≤ 1)
     """
-    s = z3_str
 
-    # Replace Z3 operators with Lean4 Unicode
-    s = s.replace("And(", "(").replace("Or(", "(")
-    s = s.replace(">=", "≥").replace("<=", "≤").replace("!=", "≠")
-    s = s.replace(",", " ∧")  # And args separated by commas
-
-    # Replace Not(x) with ¬x
-    while "Not(" in s:
-        idx = s.index("Not(")
-        # Find matching close paren
+    def split_args(text: str) -> list[str]:
+        args: list[str] = []
         depth = 0
-        end = idx + 4
-        for i in range(idx + 4, len(s)):
-            if s[i] == "(":
+        start = 0
+        for index, char in enumerate(text):
+            if char == "(":
                 depth += 1
-            elif s[i] == ")":
-                if depth == 0:
-                    end = i
-                    break
+            elif char == ")":
                 depth -= 1
-        inner = s[idx + 4 : end]
-        s = s[:idx] + f"¬({inner})" + s[end + 1 :]
+            elif char == "," and depth == 0:
+                args.append(text[start:index].strip())
+                start = index + 1
+        args.append(text[start:].strip())
+        return args
 
-    return s
+    def convert(text: str) -> str:
+        text = text.strip()
+        for head, connective in (("And", "∧"), ("Or", "∨")):
+            prefix = f"{head}("
+            if text.startswith(prefix) and text.endswith(")"):
+                parts = split_args(text[len(prefix) : -1])
+                return f" {connective} ".join(f"({convert(part)})" for part in parts)
+        if text.startswith("Not(") and text.endswith(")"):
+            return f"¬({convert(text[4:-1])})"
+        return text.replace(">=", "≥").replace("<=", "≤").replace("!=", "≠").replace("==", "=")
+
+    return convert(z3_str)
+
+
+def _fresh_result_symbol(param_names: list[str]) -> str:
+    """Return a Z3/Lean-safe result name distinct from every parameter."""
+    result_name = "__provably_result"
+    while result_name in param_names:
+        result_name += "_"
+    return result_name
+
+
+def _replace_result_symbol(expression: str, result_name: str, implementation: str) -> str:
+    """Replace only the dedicated result token, never a parameter substring."""
+    return re.sub(
+        rf"(?<![A-Za-z0-9_]){re.escape(result_name)}(?![A-Za-z0-9_])",
+        lambda _: implementation,
+        expression,
+    )
 
 
 # =============================================================================
@@ -410,18 +474,68 @@ def _z3_str_to_lean(z3_str: str, param_names: list[str]) -> str:
 # =============================================================================
 
 
-def check_lean4_proof(lean_code: str, timeout_s: float = 60.0) -> tuple[bool, str]:
+_FOUNDATIONAL_LEAN_AXIOMS = {
+    "propext",
+    "Classical.choice",
+    "Quot.sound",
+}
+_NATIVE_DECIDE_AXIOMS = {
+    "Lean.ofReduceBool",
+    "Lean.reduceBool",
+    "Lean.trustCompiler",
+}
+_LEAN_DECLARATION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
+
+
+def _contains_placeholder(lean_code: str) -> bool:
+    """Return whether executable Lean contains an admitted proof surface."""
+    without_blocks = re.sub(r"/-(?:.|\n)*?-/", "", lean_code)
+    without_comments = re.sub(r"--[^\n]*", "", without_blocks)
+    return bool(
+        re.search(r"\bsorry\b", without_comments)
+        or re.search(r"^\s*axiom\s+", without_comments, re.MULTILINE)
+    )
+
+
+def check_lean4_proof(
+    lean_code: str,
+    timeout_s: float = 60.0,
+    theorem_name: str | None = None,
+    *,
+    allow_native_decide: bool = False,
+) -> tuple[bool, str]:
     """Write Lean4 code to a temp file and check it.
 
-    Returns (success, output).
+    Returns (success, output).  A theorem audit accepts only Lean's
+    foundational axioms.  Native-decision trust axioms require both an
+    explicit ``allow_native_decide`` opt-in and a visible ``native_decide``
+    tactic in the checked source.
     """
+    if _contains_placeholder(lean_code):
+        return False, "Lean4 proof contains an admitted `sorry` or `axiom` placeholder"
+
     if not HAS_LEAN4:
         return False, "Lean4 not installed"
+
+    checked_code = lean_code
+    audit_begin: str | None = None
+    audit_end: str | None = None
+    if theorem_name is not None:
+        if _LEAN_DECLARATION_NAME.fullmatch(theorem_name) is None:
+            return False, f"Invalid Lean4 theorem name for axiom audit: {theorem_name!r}"
+        audit_token = secrets.token_hex(16)
+        audit_begin = f"__PROVABLY_AXIOM_AUDIT_BEGIN_{audit_token}__"
+        audit_end = f"__PROVABLY_AXIOM_AUDIT_END_{audit_token}__"
+        checked_code += (
+            f'\n\n#eval IO.println "{audit_begin}"\n'
+            f"#print axioms {theorem_name}\n"
+            f'#eval IO.println "{audit_end}"\n'
+        )
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".lean", delete=False, prefix="provably_"
     ) as f:
-        f.write(lean_code)
+        f.write(checked_code)
         tmp_path = f.name
 
     try:
@@ -432,7 +546,40 @@ def check_lean4_proof(lean_code: str, timeout_s: float = 60.0) -> tuple[bool, st
             timeout=timeout_s,
         )
         output = (result.stdout + result.stderr).strip()
-        return result.returncode == 0, output
+        if result.returncode != 0:
+            return False, output
+        if "declaration uses 'sorry'" in output or "sorryAx" in output:
+            return False, f"Lean4 reported an admitted declaration: {output}"
+        if theorem_name is not None:
+            assert audit_begin is not None and audit_end is not None
+            begin_at = result.stdout.find(audit_begin)
+            end_at = result.stdout.find(audit_end, begin_at + len(audit_begin))
+            if begin_at < 0 or end_at < 0:
+                return (
+                    False,
+                    f"Lean4 axiom audit markers were missing for {theorem_name}: {output}",
+                )
+            audit_output = result.stdout[begin_at + len(audit_begin) : end_at]
+            escaped = re.escape(theorem_name)
+            depends = re.search(rf"'{escaped}' depends on axioms: \[([^]]*)\]", audit_output)
+            no_axioms = re.search(rf"'{escaped}' does not depend on any axioms", audit_output)
+            if depends is None and no_axioms is None:
+                return False, f"Lean4 axiom audit produced no result for {theorem_name}: {output}"
+            axioms = (
+                {item.strip() for item in depends.group(1).split(",") if item.strip()}
+                if depends is not None
+                else set()
+            )
+            allowed_axioms = set(_FOUNDATIONAL_LEAN_AXIOMS)
+            has_native_decide = bool(
+                re.search(r"(?:\bby\s+|^\s*)native_decide\b", lean_code, re.MULTILINE)
+            )
+            if allow_native_decide and has_native_decide:
+                allowed_axioms.update(_NATIVE_DECIDE_AXIOMS)
+            unexpected = axioms - allowed_axioms
+            if unexpected:
+                return False, f"Lean4 theorem depends on disallowed axioms: {sorted(unexpected)}"
+        return True, output
     except subprocess.TimeoutExpired:
         return False, f"Lean4 timed out after {timeout_s}s"
     except FileNotFoundError:
@@ -508,10 +655,14 @@ def verify_with_lean4(
         hints = {}
 
     param_names = [arg.arg for arg in func_ast.args.args]
+    source_param_types = {
+        arg.arg: _ast_annotation_type(arg.annotation) for arg in func_ast.args.args
+    }
+    source_return_type = _ast_annotation_type(func_ast.returns)
     param_types: dict[str, type] = {}
     param_vars: dict[str, Any] = {}
     for name in param_names:
-        typ = hints.get(name, float)
+        typ = hints.get(name) or source_param_types.get(name) or float
         param_types[name] = typ
         param_vars[name] = make_z3_var(name, typ)
 
@@ -525,6 +676,7 @@ def verify_with_lean4(
     pre_strs: list[str] = []
     post_strs: list[str] = []
     param_list = [param_vars[n] for n in param_names]
+    result_name: str | None = None
 
     if pre is not None:
         try:
@@ -538,8 +690,16 @@ def verify_with_lean4(
                 postconditions=(),
                 message=f"Precondition error: {e}",
             )
-        if isinstance(pre_z3, _z3.BoolRef):
-            pre_strs.append(str(pre_z3))
+        if not isinstance(pre_z3, _z3.BoolRef):
+            return ProofCertificate(
+                function_name=fname,
+                source_hash="",
+                status=Status.TRANSLATION_ERROR,
+                preconditions=(),
+                postconditions=(),
+                message="Precondition must produce a symbolic Boolean expression",
+            )
+        pre_strs.append(str(pre_z3))
 
     # Add refinement constraints
     try:
@@ -558,9 +718,33 @@ def verify_with_lean4(
             message=f"Refinement error: {e}",
         )
 
+    if post is None:
+        return ProofCertificate(
+            function_name=fname,
+            source_hash=hashlib.sha256(source.encode()).hexdigest()[:16],
+            status=Status.SKIPPED,
+            preconditions=tuple(pre_strs),
+            postconditions=(),
+            message="Lean4 verification requires an explicit postcondition",
+        )
+
     if post is not None:
-        # Create a result variable for postcondition
-        result_var = _z3.Real("result")
+        # Match the symbolic result sort to the Python return annotation.
+        # Using Real unconditionally made Int/Bool contracts describe a
+        # different theorem from the generated implementation.
+        result_type = hints.get("return") or source_return_type or float
+        result_name = _fresh_result_symbol(param_names)
+        try:
+            result_var = make_z3_var(result_name, result_type)
+        except TypeError as e:
+            return ProofCertificate(
+                function_name=fname,
+                source_hash="",
+                status=Status.TRANSLATION_ERROR,
+                preconditions=tuple(pre_strs),
+                postconditions=(),
+                message=f"Return type error: {e}",
+            )
         try:
             post_z3 = post(*param_list, result_var)
         except Exception as e:  # noqa: BLE001 — surfaced as cert
@@ -572,8 +756,16 @@ def verify_with_lean4(
                 postconditions=(),
                 message=f"Postcondition error: {e}",
             )
-        if isinstance(post_z3, _z3.BoolRef):
-            post_strs.append(str(post_z3))
+        if not isinstance(post_z3, _z3.BoolRef):
+            return ProofCertificate(
+                function_name=fname,
+                source_hash="",
+                status=Status.TRANSLATION_ERROR,
+                preconditions=tuple(pre_strs),
+                postconditions=(),
+                message="Postcondition must produce a symbolic Boolean expression",
+            )
+        post_strs.append(str(post_z3))
 
     # Convert to Lean4 syntax
     pre_lean = (
@@ -587,21 +779,59 @@ def verify_with_lean4(
 
     # Replace 'result' with the actual function definition body
     if post_lean:
-        post_lean = post_lean.replace("result", f"({fname}_impl {' '.join(param_names)})")
+        if result_name is None:
+            return ProofCertificate(
+                function_name=fname,
+                source_hash=hashlib.sha256(source.encode()).hexdigest()[:16],
+                status=Status.TRANSLATION_ERROR,
+                preconditions=tuple(pre_strs),
+                postconditions=tuple(post_strs),
+                message="Lean4 export invariant failed: postcondition has no result symbol",
+            )
+        post_lean = _replace_result_symbol(
+            post_lean,
+            result_name,
+            f"({fname}_impl {' '.join(param_names)})",
+        )
 
     # Generate Lean4 code
-    lean_code = generate_lean4_theorem(
-        func_name=fname,
-        param_names=param_names,
-        param_types=param_types,
-        pre_str=pre_lean,
-        post_str=post_lean,
-        source=source,
-    )
+    try:
+        lean_code = generate_lean4_theorem(
+            func_name=fname,
+            param_names=param_names,
+            param_types=param_types,
+            pre_str=pre_lean,
+            post_str=post_lean,
+            source=source,
+            return_type=hints.get("return") or source_return_type,
+        )
+    except ValueError as e:
+        return ProofCertificate(
+            function_name=fname,
+            source_hash=hashlib.sha256(source.encode()).hexdigest()[:16],
+            status=Status.TRANSLATION_ERROR,
+            preconditions=tuple(pre_strs),
+            postconditions=tuple(post_strs),
+            message=f"Lean4 translation error: {e}",
+        )
+
+    if _contains_placeholder(lean_code):
+        return ProofCertificate(
+            function_name=fname,
+            source_hash=hashlib.sha256(source.encode()).hexdigest()[:16],
+            status=Status.TRANSLATION_ERROR,
+            preconditions=tuple(pre_strs),
+            postconditions=tuple(post_strs),
+            message="Lean4 translation produced an admitted placeholder",
+        )
 
     # Check with Lean4
     t0 = time.monotonic()
-    success, output = check_lean4_proof(lean_code, timeout_s=timeout_s)
+    success, output = check_lean4_proof(
+        lean_code,
+        timeout_s=timeout_s,
+        theorem_name=f"{fname}_verified",
+    )
     elapsed = (time.monotonic() - t0) * 1000
 
     source_hash = hashlib.sha256(source.encode()).hexdigest()[:16]
@@ -650,7 +880,7 @@ def export_lean4(
     tree = ast.parse(source)
     func_ast = tree.body[0]
     if not isinstance(func_ast, ast.FunctionDef):
-        return "-- Error: not a function definition\n"
+        raise ValueError("Lean4 export source is not a function definition")
 
     try:
         from typing import get_type_hints
@@ -660,16 +890,21 @@ def export_lean4(
         hints = {}
 
     param_names = [arg.arg for arg in func_ast.args.args]
+    source_param_types = {
+        arg.arg: _ast_annotation_type(arg.annotation) for arg in func_ast.args.args
+    }
+    source_return_type = _ast_annotation_type(func_ast.returns)
     param_types: dict[str, type] = {}
     param_vars: dict[str, Any] = {}
     for name in param_names:
-        typ = hints.get(name, float)
+        typ = hints.get(name) or source_param_types.get(name) or float
         param_types[name] = typ
         param_vars[name] = make_z3_var(name, typ)
 
     param_list = [param_vars[n] for n in param_names]
     pre_strs: list[str] = []
     post_strs: list[str] = []
+    result_name: str | None = None
 
     # Soundness: the exporter must refuse to emit an incomplete theorem
     # when the user's pre/post raises. A silently-dropped pre becomes a
@@ -681,8 +916,9 @@ def export_lean4(
             pre_z3 = pre(*param_list)
         except Exception as e:  # noqa: BLE001 — re-raised as ValueError
             raise ValueError(f"Precondition raised when exporting: {e}") from e
-        if isinstance(pre_z3, _z3.BoolRef):
-            pre_strs.append(str(pre_z3))
+        if not isinstance(pre_z3, _z3.BoolRef):
+            raise ValueError("Precondition must produce a symbolic Boolean expression")
+        pre_strs.append(str(pre_z3))
 
     for name, var in param_vars.items():
         typ = hints.get(name)
@@ -691,13 +927,19 @@ def export_lean4(
                 pre_strs.append(str(constraint))
 
     if post is not None:
-        result_var = _z3.Real("result")
+        result_type = hints.get("return") or source_return_type or float
+        result_name = _fresh_result_symbol(param_names)
+        try:
+            result_var = make_z3_var(result_name, result_type)
+        except TypeError as e:
+            raise ValueError(f"Unsupported return type when exporting: {e}") from e
         try:
             post_z3 = post(*param_list, result_var)
         except Exception as e:  # noqa: BLE001 — re-raised as ValueError
             raise ValueError(f"Postcondition raised when exporting: {e}") from e
-        if isinstance(post_z3, _z3.BoolRef):
-            post_strs.append(str(post_z3))
+        if not isinstance(post_z3, _z3.BoolRef):
+            raise ValueError("Postcondition must produce a symbolic Boolean expression")
+        post_strs.append(str(post_z3))
 
     pre_lean = (
         " ∧ ".join(f"({_z3_str_to_lean(s, param_names)})" for s in pre_strs) if pre_strs else None
@@ -709,7 +951,13 @@ def export_lean4(
     )
 
     if post_lean:
-        post_lean = post_lean.replace("result", f"({fname}_impl {' '.join(param_names)})")
+        if result_name is None:
+            raise ValueError("Lean4 export invariant failed: postcondition has no result symbol")
+        post_lean = _replace_result_symbol(
+            post_lean,
+            result_name,
+            f"({fname}_impl {' '.join(param_names)})",
+        )
 
     lean_code = generate_lean4_theorem(
         func_name=fname,
@@ -718,7 +966,11 @@ def export_lean4(
         pre_str=pre_lean,
         post_str=post_lean,
         source=source,
+        return_type=hints.get("return") or source_return_type,
     )
+
+    if _contains_placeholder(lean_code):
+        raise ValueError("Lean4 export contains an admitted placeholder")
 
     if output_path is not None:
         Path(output_path).write_text(lean_code)
