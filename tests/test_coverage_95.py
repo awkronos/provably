@@ -1083,22 +1083,25 @@ class TestPytestPluginPaths:
         assert certs == {}
 
     def test_scan_item_for_proofs_getattr_exception(self) -> None:
-        """Cover lines 190-191 — getattr raises inside _scan_item_for_proofs loop."""
+        """Cover the getattr guard — getattr raises inside _scan_item_for_proofs loop."""
+        import types as _types
+
         from provably.pytest_plugin import _scan_item_for_proofs
 
-        # Need a module-like object where dir() returns a name but
-        # getattr() raises for that name (triggers lines 190-191).
-        class RaisingModule:
-            def __dir__(self) -> list:
-                return ["exploding_attr"]
-
+        # A proxy object whose __getattr__ raises for ANY attribute access,
+        # simulating broken third-party objects (e.g. langsmith lazy proxies).
+        class RaisingProxy:
             def __getattr__(self, name: str) -> object:
                 raise RuntimeError(f"getattr for {name!r} always explodes")
 
+        # Embed the proxy in a real module so vars(mod) returns it for iteration.
+        fake_mod = _types.ModuleType("__provably_test_raising_mod__")
+        fake_mod.__dict__["raising_proxy"] = RaisingProxy()
+
         fake_item = MagicMock()
-        fake_item.module = RaisingModule()
+        fake_item.module = fake_mod
         certs: dict[str, Any] = {}
-        # Should not raise — exception is caught at line 190 and continued
+        # Should not raise — exception is caught and skipped
         _scan_item_for_proofs(fake_item, certs)
         assert certs == {}
 
@@ -2029,22 +2032,29 @@ class TestPytestPluginGaps:
             del sys.modules[sentinel_key]
 
     def test_collect_proof_getattr_exception(self) -> None:
-        """Cover lines 168-169: getattr raises exception during sys.modules scan."""
+        """Cover the getattr guard: getattr raises during sys.modules scan.
+
+        Reproduces the langsmith proxy failure: langsmith puts lazy-proxy objects
+        into sys.modules namespaces; getattr(proxy, any_attr, default) raises
+        ModuleNotFoundError (not AttributeError) when the underlying package is
+        absent.  _collect_proof_certificates must skip such objects silently.
+        """
+        import types as _types
 
         from provably.pytest_plugin import _collect_proof_certificates
 
-        class BrokenModule:
-            """Module where getattr always raises."""
-
-            def __dir__(self):
-                return ["boom"]
-
-            def __getattr__(self, name):
+        # A proxy whose __getattr__ raises for any attribute access.
+        class RaisingProxy:
+            def __getattr__(self, name: str) -> object:
                 raise RuntimeError("intentional getattr failure")
+
+        # Embed the proxy in a real module so vars(mod) returns it.
+        broken_mod = _types.ModuleType("__provably_test_broken_mod__")
+        broken_mod.__dict__["raising_proxy"] = RaisingProxy()
 
         fake_config = MagicMock(spec=[])
         sentinel_key = "__provably_test_broken_mod__"
-        sys.modules[sentinel_key] = BrokenModule()  # type: ignore
+        sys.modules[sentinel_key] = broken_mod  # type: ignore
         try:
             certs = _collect_proof_certificates(fake_config)
             assert isinstance(certs, list)

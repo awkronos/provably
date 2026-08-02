@@ -164,10 +164,13 @@ def _collect_proof_certificates(config: pytest.Config) -> list[ProofCertificate]
             continue
         try:
             objects = tuple(vars(mod).values())
-        except TypeError:
+        except Exception:  # pragma: no cover — defensive against buggy/lazy modules
             continue
         for obj in objects:
-            proof = getattr(obj, "__proof__", None)
+            try:
+                proof = getattr(obj, "__proof__", None)
+            except Exception:  # noqa: BLE001 — proxy objects (e.g. langsmith) may raise on any attr
+                continue
             if callable(obj) and isinstance(proof, PC):
                 certs[proof.function_name] = proof
 
@@ -185,10 +188,13 @@ def _scan_item_for_proofs(item: pytest.Item, certs: dict[str, Any]) -> None:
 
     try:
         objects = tuple(vars(mod).values())
-    except TypeError:
+    except Exception:  # pragma: no cover — defensive against buggy/lazy modules
         return
     for obj in objects:
-        proof = getattr(obj, "__proof__", None)
+        try:
+            proof = getattr(obj, "__proof__", None)
+        except Exception:  # noqa: BLE001 — proxy objects may raise on any attr access
+            continue
         if callable(obj) and isinstance(proof, PC):
             certs[proof.function_name] = proof
 
