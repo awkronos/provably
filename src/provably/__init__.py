@@ -25,6 +25,8 @@ Optional extras
 - ``provably.hypothesis`` — Hypothesis bridge (``pip install provably[hypothesis]``).
 - ``provably.pytest_plugin`` — pytest ``--provably-report`` and ``proven`` marker
   (auto-registered when provably is installed).
+- ``provably.succinct`` — SP1 proof-carrying certs via sibling ``pcc-sp1`` /
+  ``pcc-core`` (see ``ARCHITECTURE.md``; needs ``pcc-sp1`` on ``PATH``).
 """
 
 from __future__ import annotations  # pragma: no cover

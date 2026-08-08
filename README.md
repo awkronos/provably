@@ -233,11 +233,13 @@ make bench          # writes /tmp/kagami-provably-bench.json
 
 ## Links
 
+- [Product architecture](ARCHITECTURE.md) — Python ↔ Rust ↔ `pcc-core` ↔ `pcc-sp1`
 - [Documentation](https://awkronos.github.io/provably/)
 - [Getting started](https://awkronos.github.io/provably/getting-started/)
 - [How it works](https://awkronos.github.io/provably/concepts/how-it-works/)
 - [Self-proof](https://awkronos.github.io/provably/self-proof/)
 - [API reference](https://awkronos.github.io/provably/api/decorators/)
+- Sibling crates: [`provably-rs`](../provably-rs) · [`pcc-core`](../pcc-core) · [`pcc-sp1`](../pcc-sp1)
 - [Changelog](CHANGELOG.md) · [License](LICENSE) (MIT)
 
 ---

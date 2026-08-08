@@ -59,6 +59,7 @@ Documentation = "https://awkronos.github.io/provably"
 Repository = "https://github.com/awkronos/provably"
 "Bug Tracker" = "https://github.com/awkronos/provably/issues"
 Changelog = "https://github.com/awkronos/provably/blob/main/CHANGELOG.md"
+Architecture = "https://github.com/awkronos/provably/blob/main/ARCHITECTURE.md"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -66,6 +67,7 @@ include = [
     "/tests",
     "/LICENSE",
     "/README.md",
+    "/ARCHITECTURE.md",
     "/CHANGELOG.md",
     "/pyproject.toml",
 ]
