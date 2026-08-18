@@ -22,8 +22,14 @@ Usage
 
 Output
 ------
-    /tmp/kagami-provably-bench.json      (SOTA sidecar, replaces old bench)
-    /tmp/kagami-provably-sota-full.json  (full competitor table)
+One JSON artifact, the SOTA sidecar, whose path is defined once as
+``SIDECAR_PATH`` below.  ``tests/test_docs_consistency.py`` asserts that the
+README agrees with that constant, so the path cannot drift between the
+producing script and the prose documenting it.
+
+(A second ``/tmp/kagami-provably-sota-full.json`` "full competitor table" was
+documented here for some time and was never written by any code path; the
+claim is removed rather than restated.)
 """
 
 from __future__ import annotations
@@ -54,6 +60,10 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 WARMUP = 5
 MEASURE = 25
 FIXTURES = _REPO_ROOT / "benches" / "fixtures"
+
+# Single definition of the SOTA sidecar path.  The README documents this path;
+# tests/test_docs_consistency.py asserts the two agree.
+SIDECAR_PATH = Path("/tmp/kagami-provably-bench.json")
 
 # ---------------------------------------------------------------------------
 # Provably contract (written to a real file so inspect.getsource works)
@@ -576,7 +586,7 @@ def run() -> dict[str, Any]:
         ),
     }
 
-    out_path = Path("/tmp/kagami-provably-bench.json")
+    out_path = SIDECAR_PATH
     out_path.write_text(json.dumps(sidecar, indent=2))
     print(f"\n  sidecar written: {out_path}")
 

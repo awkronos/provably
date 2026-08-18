@@ -31,9 +31,12 @@ Optional extras
 
 from __future__ import annotations  # pragma: no cover
 
-__version__ = "0.4.0"  # pragma: no cover
-
 from z3 import And, Implies, Not, Or  # pragma: no cover
+
+from ._version import read_version  # pragma: no cover
+
+# Derived from pyproject.toml (the single definition), never transcribed.
+__version__ = read_version()  # pragma: no cover
 
 from .decorators import (
     ContractViolationError,

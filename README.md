@@ -204,9 +204,12 @@ lean_code = export_lean4(clamp, output_path="clamp.lean")
 | `while` loops (bounded, max 256 iterations) | Yes (unrolled) |
 | `for i in range(N)` (literal N, max 256) | Yes (unrolled) |
 | `assert` statements | Yes (become proof obligations) |
+| `x in [...]` / `x not in [...]` over a list literal | Yes (expanded to a disjunction) |
+| List comprehensions over `range(N)` inside `sum`/`any`/`all` | Yes (unrolled) |
 | Lean 4 backend (`verify_with_lean4`) | Yes (requires Lean 4) |
 | Recursion | No |
-| `str`, `list`, `dict` | No |
+| `str`, `dict` | No |
+| `list` as a parameter or return type | No (list *literals* are supported — see the two rows above) |
 | Unbounded loops, generators, async | No |
 
 ## Comparison
