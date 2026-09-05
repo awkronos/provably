@@ -1412,6 +1412,10 @@ class Translator:
     def _call_verified(self, fname: str, args: list[Any]) -> Any:
         """Apply a verified function's contract (modular verification)."""
         contract = self.verified_contracts[fname]
+        if "verified" in contract and contract["verified"] is not True:
+            raise TranslationError(
+                f"Contract for '{fname}' is not verified and cannot be used for composition"
+            )
         param_sorts = [a.sort() for a in args]
         return_sort = contract.get("return_sort", z3.RealSort())
         f_decl = z3.Function(fname, *param_sorts, return_sort)

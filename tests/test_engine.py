@@ -327,6 +327,70 @@ class TestCache:
         # Different postconditions — must not be the same cached cert
         assert c1 is not c2
 
+    def test_composition_contracts_are_part_of_the_cache_key(self) -> None:
+        def helper(x: float) -> float:
+            return x
+
+        def caller(x: float) -> float:
+            return helper(x)
+
+        contract = {
+            "post": lambda x, r: r == x,
+            "verified": True,
+        }
+        proved = verify_function(
+            caller,
+            post=lambda x, r: r == x,
+            verified_contracts={"helper": contract},
+        )
+        contract["verified"] = False
+        refused = verify_function(
+            caller,
+            post=lambda x, r: r == x,
+            verified_contracts={"helper": contract},
+        )
+
+        assert proved.status == Status.VERIFIED
+        assert refused.status == Status.TRANSLATION_ERROR
+        assert refused is not proved
+
+
+class TestCompositionTrustBoundary:
+    def test_verified_callee_contract_can_discharge_a_caller(self) -> None:
+        from provably import verified
+
+        @verified(post=lambda x, r: r == x)
+        def identity(x: float) -> float:
+            return x
+
+        @verified(
+            contracts={"identity": identity.__contract__},
+            post=lambda x, r: r == x,
+        )
+        def caller(x: float) -> float:
+            return identity(x)
+
+        assert identity.__proof__.status == Status.VERIFIED
+        assert caller.__proof__.status == Status.VERIFIED
+
+    def test_disproved_callee_contract_cannot_be_assumed_by_a_caller(self) -> None:
+        from provably import verified
+
+        @verified(post=lambda x, r: r >= 0)
+        def negative(x: float) -> float:
+            return -1.0
+
+        @verified(
+            contracts={"negative": negative.__contract__},
+            post=lambda x, r: r >= 0,
+        )
+        def caller(x: float) -> float:
+            return negative(x)
+
+        assert negative.__proof__.status == Status.COUNTEREXAMPLE
+        assert caller.__proof__.status == Status.TRANSLATION_ERROR
+        assert "not verified" in caller.__proof__.message
+
 
 # ---------------------------------------------------------------------------
 # Contract signature validation

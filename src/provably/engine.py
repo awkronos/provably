@@ -342,12 +342,13 @@ def _fast_key(
     func: Callable[..., Any],
     pre: Callable[..., Any] | None,
     post: Callable[..., Any] | None,
+    verified_contracts_sig: str = "none",
 ) -> tuple[Any, ...] | None:
     """Compute a bytecode-level cache key without calling inspect.getsource.
 
-    Returns a tuple of (func_bytecode, pre_bytecode, post_bytecode, closure_values).
-    The tuple is hashable and uniquely determines proof outcome. Returns None
-    if any callable doesn't expose ``__code__`` (e.g. builtins, C extensions).
+    The tuple covers function/contract bytecode, closure values, and the callee
+    contract signature. It is hashable and uniquely determines proof outcome.
+    Returns None if a callable lacks ``__code__`` (e.g. builtins, C extensions).
     """
     try:
         fc = func.__code__
@@ -370,7 +371,7 @@ def _fast_key(
                 cells = tuple(_safe_cell_repr(c) for c in cb.__closure__)
             return (cc.co_code, cc.co_consts, cc.co_names, cells)
 
-        return (fkey, fcells, _cb_key(pre), _cb_key(post))
+        return (fkey, fcells, _cb_key(pre), _cb_key(post), verified_contracts_sig)
     except AttributeError:
         return None
 
@@ -413,6 +414,25 @@ def _contract_sig(fn: Callable[..., Any] | None) -> str:
         return hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()[:16]
     except AttributeError:
         return repr(fn)
+
+
+def _verified_contracts_sig(contracts: dict[str, dict[str, Any]] | None) -> str:
+    """Hash every callee-contract field that changes symbolic translation."""
+    if not contracts:
+        return "none"
+    parts: list[str] = []
+    for name in sorted(contracts):
+        contract = contracts[name]
+        parts.extend(
+            (
+                name,
+                _contract_sig(contract.get("pre")),
+                _contract_sig(contract.get("post")),
+                str(contract.get("return_sort", "")),
+                repr(contract.get("verified", "unspecified")),
+            )
+        )
+    return hashlib.sha256("\0".join(parts).encode()).hexdigest()[:16]
 
 
 def _disk_cache_dir() -> Path | None:
@@ -580,7 +600,8 @@ def verify_function(
     # L0 fast cache: bytecode-keyed memoization. Skips inspect.getsource() on
     # hits (~25μs saved) and avoids hashing source text. A hit here returns
     # in ~1.5μs from the time verify_function() is entered.
-    fast_key = _fast_key(func, pre, post)
+    contracts_sig = _verified_contracts_sig(verified_contracts)
+    fast_key = _fast_key(func, pre, post, contracts_sig)
     if fast_key is not None:
         cached = _fast_cache.get(fast_key)
         if cached is not None:
@@ -599,8 +620,8 @@ def verify_function(
             message=f"Cannot get source: {e}",
         )
 
-    # Cache key: source + contract bytecode (stable across identical lambdas)
-    cache_key = _source_hash(source + _contract_sig(pre) + _contract_sig(post))
+    # Cache key: source + local and callee contracts (stable across identical lambdas)
+    cache_key = _source_hash(source + _contract_sig(pre) + _contract_sig(post) + contracts_sig)
     if cache_key in _proof_cache:
         cert = _proof_cache[cache_key]
         if fast_key is not None:
