@@ -242,7 +242,7 @@ make bench          # writes /tmp/kagami-provably-bench.json
 - [How it works](https://awkronos.github.io/provably/concepts/how-it-works/)
 - [Self-proof](https://awkronos.github.io/provably/self-proof/)
 - [API reference](https://awkronos.github.io/provably/api/decorators/)
-- Sibling crates: [`provably-rs`](../provably-rs) · [`pcc-core`](../pcc-core) · [`pcc-sp1`](../pcc-sp1)
+- Sibling crates: [`provably-rs`](https://github.com/awkronos/provably-rs) · [`pcc-core`](https://github.com/awktavian/pcc-core) · [`pcc-sp1`](https://github.com/awktavian/pcc-sp1)
 - [Changelog](CHANGELOG.md) · [License](LICENSE) (MIT)
 
 ---
