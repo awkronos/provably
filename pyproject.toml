@@ -33,6 +33,7 @@ dependencies = ["z3-solver>=4.12"]
 hypothesis = ["hypothesis>=6.100"]
 speed = ["orjson>=3.10"]  # optional: 3-5x faster disk-cache serialization
 dev = [
+    "tomli>=2.0; python_version < '3.11'",
     "pytest>=8.0",
     "pytest-cov>=6.0",
     "pytest-timeout>=2.2",

@@ -24,7 +24,11 @@ import re
 from pathlib import Path
 
 import pytest
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 (the repo supports >=3.10)
+    import tomli as tomllib  # PEP 680 backport, same API; dev extra installs it
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
