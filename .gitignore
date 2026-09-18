@@ -28,3 +28,9 @@ scripts/_bench_contract.py
 **/.lake_backup/
 .syncthing.*.tmp
 output/
+
+# Benchmark scratch contracts written by scripts/sota_bench.py
+# (_load_contract_fresh) and removed by _cleanup_contract_files(). 30 of
+# them were committed by an interrupted bench run; they are regenerable
+# byte-for-byte and must never be tracked again.
+scripts/_sota_contract_*.py
