@@ -266,16 +266,25 @@ class TestDecoratorsExceptionClasses:
             assert len(w) == 0
 
     def test_check_contract_arity_uninspectable(self) -> None:
-        """_check_contract_arity returns early for uninspectable callables."""
-        # A builtin like print can't be inspected with inspect.signature
-        # (actually it can, but we can mock to trigger the except path)
+        """_check_contract_arity returns silently when inspect.signature raises.
+
+        Exercises the real except-(ValueError, TypeError) path (decorators.py
+        lines 119-120): a previous version called `_check_contract_arity(len, ...)`
+        with no patch and no assertion — `len` is inspectable, so the error path
+        never ran and nothing was verified.
+        """
         import warnings
 
         from provably.decorators import _check_contract_arity
 
-        with warnings.catch_warnings(record=True) as w:
+        with (
+            patch("provably.decorators.inspect.signature", side_effect=ValueError("no sig")),
+            warnings.catch_warnings(record=True) as w,
+        ):
             warnings.simplefilter("always")
-            _check_contract_arity(len, 1, "pre", "foo")  # len takes 1 arg
+            _check_contract_arity(lambda x: x > 0, 1, "pre", "foo")
+        # Uninspectable contract → early return, no arity warning emitted.
+        assert len(w) == 0
 
     def test_handle_violation_warn_path(self) -> None:
         """_handle_violation with raise_on_failure=False should warn."""
@@ -460,10 +469,12 @@ class TestEngineDefLines:
         assert isinstance(data["counterexample"]["x"], str)
 
     def test_clear_cache(self) -> None:
-        """Cover line 290 (clear_cache def)."""
-        from provably.engine import clear_cache
+        """clear_cache() actually empties the in-memory proof cache."""
+        from provably.engine import _proof_cache, clear_cache
 
-        clear_cache()  # just run it
+        _proof_cache["w2-sentinel-key"] = None  # type: ignore[assignment]
+        clear_cache()
+        assert "w2-sentinel-key" not in _proof_cache
 
     def test_source_hash(self) -> None:
         """Cover line 299 (_source_hash)."""
@@ -538,8 +549,14 @@ class TestEngineDefLines:
         _config["cache_dir"] = old_dir
 
     def test_save_to_disk_no_path(self) -> None:
-        """Cover line 354-364 (_save_to_disk with None path)."""
-        from provably.engine import ProofCertificate, Status, _config, _save_to_disk
+        """_save_to_disk with a disabled cache dir writes nothing and does not raise."""
+        from provably.engine import (
+            ProofCertificate,
+            Status,
+            _config,
+            _disk_cache_path,
+            _save_to_disk,
+        )
 
         cert = ProofCertificate(
             function_name="fn",
@@ -550,8 +567,11 @@ class TestEngineDefLines:
         )
         old_dir = _config.get("cache_dir")
         _config["cache_dir"] = None
-        _save_to_disk("test_key", cert)  # should be a no-op
-        _config["cache_dir"] = old_dir
+        try:
+            assert _disk_cache_path("test_key") is None  # disk cache fully disabled
+            _save_to_disk("test_key", cert)  # no-op — must not raise
+        finally:
+            _config["cache_dir"] = old_dir
 
     def test_validate_contract_arity_varargs(self) -> None:
         """Cover line 372+ (_validate_contract_arity with varargs)."""
@@ -728,14 +748,10 @@ class TestTranslatorSpecificPaths:
         def fn(x: bool) -> int:
             return int(x)
 
-        # May be VERIFIED, COUNTEREXAMPLE, or TRANSLATION_ERROR
-        # Either way, the int() cast on bool is invoked during translation
-        assert fn.__proof__.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.TRANSLATION_ERROR,
-            Status.SKIPPED,
-        )
+        # int(True)=1, int(False)=0 — both satisfy result >= 0. The cast
+        # branch must VERIFY, not fail; asserting one status instead of a
+        # 4-member "anything but UNKNOWN" set (which passed on regressions).
+        assert fn.__proof__.status == Status.VERIFIED
 
     def test_float_cast_bool_sort(self) -> None:
         """Cover line 138 — float() on bool sort."""
@@ -746,12 +762,8 @@ class TestTranslatorSpecificPaths:
         def fn(x: bool) -> float:
             return float(x)
 
-        assert fn.__proof__.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.TRANSLATION_ERROR,
-            Status.SKIPPED,
-        )
+        # float(True)=1.0, float(False)=0.0 — must VERIFY (see int-cast twin).
+        assert fn.__proof__.status == Status.VERIFIED
 
     def test_unsupported_statement(self) -> None:
         """TranslationError for unsupported statement type."""
@@ -776,8 +788,11 @@ class TestTranslatorSpecificPaths:
             return a
 
         cert = verify_function(fn, post=lambda x, r: r > x)
-        # multiple targets triggers TranslationError in _do_assign
-        assert cert.status in (Status.TRANSLATION_ERROR, Status.VERIFIED)
+        # multiple targets triggers TranslationError in _do_assign — assert
+        # that, not "(TRANSLATION_ERROR or VERIFIED)" which passes silently
+        # if the guard is ever removed.
+        assert cert.status == Status.TRANSLATION_ERROR
+        assert "Multiple assignment" in cert.message
 
     def test_walrus_operator(self) -> None:
         """Cover NamedExpr path (walrus := operator)."""
@@ -789,13 +804,10 @@ class TestTranslatorSpecificPaths:
             return 0
 
         cert = verify_function(fn, post=lambda x, r: r >= 0)
-        # walrus is handled; should not be TRANSLATION_ERROR
-        assert cert.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.UNKNOWN,
-            Status.TRANSLATION_ERROR,
-        )
+        # walrus is handled: y = x+1 > 0 ⇒ return x+1 ≥ 0, and the false
+        # branch returns 0. VERIFIED is the measured, provable outcome —
+        # a 4-member set would also pass a regression to TRANSLATION_ERROR.
+        assert cert.status == Status.VERIFIED
 
     def test_for_loop_with_else_clause(self) -> None:
         """Cover the for-loop else clause warning path."""
@@ -810,12 +822,10 @@ class TestTranslatorSpecificPaths:
             return total
 
         cert = verify_function(fn, post=lambda n, r: r == 4)
-        assert cert.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.TRANSLATION_ERROR,
-            Status.UNKNOWN,
-        )
+        # The translator documents that it ignores the else clause (warning
+        # path, covered in test_final_coverage), so total = 0+1+2 = 3 ≠ 4:
+        # the honest measured outcome is a COUNTEREXAMPLE, not a 4-way "any".
+        assert cert.status == Status.COUNTEREXAMPLE
 
     def test_tuple_subscript_negative_out_of_range(self) -> None:
         """Cover tuple subscript out of range (line 1490-1492)."""
@@ -826,12 +836,8 @@ class TestTranslatorSpecificPaths:
             return t[0]
 
         cert = verify_function(fn, post=lambda x, y, r: r == x)
-        assert cert.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.TRANSLATION_ERROR,
-            Status.UNKNOWN,
-        )
+        # t = (x, y); t[0] == x is provable — pin the outcome.
+        assert cert.status == Status.VERIFIED
 
     def test_match_statement_with_guard(self) -> None:
         """Cover match with guard clause (line 658-661)."""
@@ -845,15 +851,19 @@ class TestTranslatorSpecificPaths:
                     return 0
 
         cert = verify_function(fn, post=lambda x, r: r >= 0)
-        assert cert.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.TRANSLATION_ERROR,
-            Status.UNKNOWN,
-        )
+        # case 1 (guarded) → 10, wildcard → 0; both arms satisfy r >= 0.
+        assert cert.status == Status.VERIFIED
 
     def test_filter_none_predicate_false_int(self) -> None:
-        """Cover filter(None, [0, 1, 2]) where 0 is filtered out (line 1337-1338)."""
+        """`list(filter(...))` fails closed on the unsupported `list` builtin.
+
+        Docstring repair: this never reached the filter(None, …) branches —
+        translation aborts earlier at the unknown function `list`, so the
+        filter-branch coverage claim was false. The filter(None, …) concrete
+        and symbolic branches are covered directly (without the `list`
+        wrapper) in TestTranslatorFilterNoneGaps and in test_final_coverage.
+        What this test genuinely pins is the fail-closed unknown-function error.
+        """
         from provably.engine import Status, verify_function
 
         def fn(x: int) -> int:
@@ -861,12 +871,8 @@ class TestTranslatorSpecificPaths:
             return sum(filtered)
 
         cert = verify_function(fn, post=lambda x, r: r == 3)
-        assert cert.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.TRANSLATION_ERROR,
-            Status.UNKNOWN,
-        )
+        assert cert.status == Status.TRANSLATION_ERROR
+        assert "Unknown function 'list'" in cert.message
 
     def test_while_loop_early_return(self) -> None:
         """Cover while-loop early return path (line 542-550)."""
@@ -881,12 +887,9 @@ class TestTranslatorSpecificPaths:
             return -1
 
         cert = verify_function(fn, post=lambda x, r: r >= 0)
-        assert cert.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.TRANSLATION_ERROR,
-            Status.UNKNOWN,
-        )
+        # Measured: COUNTEREXAMPLE x=0 → the unrolled loop returns -1,
+        # violating r >= 0.  Pin it; a "any status" set hides regressions.
+        assert cert.status == Status.COUNTEREXAMPLE
 
 
 # ---------------------------------------------------------------------------
@@ -905,17 +908,26 @@ class TestHypothesisSpecificPaths:
         assert st is not None
 
     def test_require_hypothesis_import_error(self) -> None:
-        """Cover lines 33-34 — ImportError when hypothesis missing."""
+        """Cover the ImportError re-raise branch of the REAL _require_hypothesis.
+
+        False-green repair: the previous version replaced
+        ``hyp_mod._require_hypothesis`` with a raising mock, then called the
+        mock — the function's actual `except ImportError` body never executed
+        and the test passed regardless of module behavior. Now the real
+        function is called with ``hypothesis`` shadowed in sys.modules, so the
+        import inside its body genuinely raises and the re-raise (with install
+        hint, chained via ``from exc``) is verified.
+        """
         from provably import hypothesis as hyp_mod
 
+        real_require = hyp_mod._require_hypothesis
         with (
             patch.dict(sys.modules, {"hypothesis": None, "hypothesis.strategies": None}),
-            patch.object(
-                hyp_mod, "_require_hypothesis", side_effect=ImportError("hypothesis not installed")
-            ),
-            pytest.raises(ImportError, match="hypothesis"),
+            pytest.raises(ImportError, match="hypothesis is required") as exc_info,
         ):
-            hyp_mod._require_hypothesis()
+            real_require()
+        # Re-raised from the underlying import failure, not raised fresh.
+        assert isinstance(exc_info.value.__cause__, ImportError)
 
     def test_nested_annotated_base_type(self) -> None:
         """Cover lines 85-87 — nested Annotated unwrapping."""
@@ -1658,6 +1670,8 @@ class TestEngineGapsPhase2:
             # Patch Path.with_suffix to raise to trigger the except block
             with patch("provably.engine.Path.with_suffix", side_effect=OSError("disk full")):
                 _save_to_disk("testkey123", cert)  # should not raise
+            # Enforce the suppression semantics: no partial artifact was left.
+            assert list(Path(tmpdir).glob("testkey123*")) == []
         configure(cache_dir=None)
         clear_cache()
 

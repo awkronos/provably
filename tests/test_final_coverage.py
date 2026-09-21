@@ -654,7 +654,8 @@ class TestEngineLines340_341_EmptyCell:
             return x
 
         cert = verify_function(f, post=lambda x, r: r <= 10)
-        assert cert.status in (Status.VERIFIED, Status.UNKNOWN, Status.TRANSLATION_ERROR)
+        # r is min(x, 10) on both paths → r <= 10 provable; measured VERIFIED.
+        assert cert.status == Status.VERIFIED
 
 
 # ===========================================================================
@@ -673,14 +674,12 @@ class TestEngineLines364_365_HintsException:
         # Annotate with a forward ref that doesn't resolve
         f.__annotations__ = {"x": "NonExistentType999", "return": "NonExistentType999"}
         cert = verify_function(f, post=lambda x, r: r > x)
-        # Should not crash — falls back to float defaults
-        assert cert.status in (
-            Status.VERIFIED,
-            Status.COUNTEREXAMPLE,
-            Status.UNKNOWN,
-            Status.TRANSLATION_ERROR,
-            Status.SKIPPED,
-        )
+        # Must not crash — falls back to float defaults. Measured outcome:
+        # with x treated as Real, x + 1 > x is provable, so VERIFIED.
+        # (The previous assertion listed all five Status members — a
+        # tautology that passes on any outcome, including a crash-adjacent
+        # TRANSLATION_ERROR regression.)
+        assert cert.status == Status.VERIFIED
 
 
 # ===========================================================================
@@ -884,7 +883,8 @@ class TestEngineLines645_649_664_ClosureVars:
             return x + PI
 
         cert = verify_function(f, post=lambda x, r: r > x)
-        assert cert.status in (Status.VERIFIED, Status.UNKNOWN, Status.TRANSLATION_ERROR)
+        # x + 3.14159 > x is provable once PI resolves to a RealVal.
+        assert cert.status == Status.VERIFIED
 
     def test_resolve_closure_vars_bool_constant(self) -> None:
         """Boolean closure vars are resolved to z3.BoolVal."""
@@ -896,7 +896,8 @@ class TestEngineLines645_649_664_ClosureVars:
             return x
 
         cert = verify_function(f, post=lambda x, r: r >= x)
-        assert cert.status in (Status.VERIFIED, Status.UNKNOWN, Status.TRANSLATION_ERROR)
+        # FLAG=True folds the branch; both paths satisfy r >= x.
+        assert cert.status == Status.VERIFIED
 
 
 # ===========================================================================
@@ -945,8 +946,13 @@ class TestDecoratorsLines119_120_CheckArityException:
             dec_mod.inspect.signature = original
 
     def test_check_contract_arity_type_error(self) -> None:
-        """_check_contract_arity handles TypeError from inspect.signature."""
-        import inspect
+        """_check_contract_arity handles TypeError from inspect.signature.
+
+        The except path must return silently — assert it (the body previously
+        had no assertion at all, so any spurious warning or error message
+        change would still have passed).
+        """
+        import warnings
 
         import provably.decorators as dec_mod
 
@@ -957,7 +963,10 @@ class TestDecoratorsLines119_120_CheckArityException:
 
         dec_mod.inspect.signature = raise_type_error  # type: ignore[attr-defined]
         try:
-            _check_contract_arity(lambda x: x > 0, 1, "pre", "f")
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                _check_contract_arity(lambda x: x > 0, 1, "pre", "f")
+            assert len(w) == 0  # early return — no arity warning emitted
         finally:
             dec_mod.inspect.signature = original
 
@@ -2096,8 +2105,10 @@ class TestEngineZ3BoolCounterexample:
             return flag
 
         cert = verify_function(f, post=lambda flag, r: r == False)  # noqa: E712
-        # There exists flag=True such that r==False is violated → counterexample
-        if cert.status == Status.COUNTEREXAMPLE:
-            assert cert.counterexample is not None
-            # The flag value should have been extracted
-            assert "flag" in cert.counterexample or "__return__" in cert.counterexample
+        # There exists flag=True such that r==False is violated → counterexample.
+        # Measured deterministically; the previous conditional `if status ==
+        # COUNTEREXAMPLE` made the whole test pass even if extraction broke.
+        assert cert.status == Status.COUNTEREXAMPLE
+        assert cert.counterexample is not None
+        # is_true/is_false extraction path: flag must come back as Python True
+        assert cert.counterexample.get("flag") is True
