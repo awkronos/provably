@@ -5,7 +5,7 @@
 
   **Z3-backed formal verification for Python — via decorators and refinement types.**
 
-  _An [awkronos](https://awkronos.com) library. The Python sibling of [`provably`](https://crates.io/crates/provably) for Rust._
+  _An [awkronos](https://awkronos.com) library. The Python sibling of [`provably`](https://github.com/awkronos/provably-rs) for Rust._
 
   [![PyPI](https://img.shields.io/pypi/v/provably?color=D97706)](https://pypi.org/project/provably/)
   [![Python](https://img.shields.io/pypi/pyversions/provably?color=1E1B4B)](https://pypi.org/project/provably/)

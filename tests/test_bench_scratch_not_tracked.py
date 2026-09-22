@@ -9,6 +9,13 @@ near-duplicate orphan twins (2026-09-18 workspace analysis,
 ``projects/provably/scripts`` family, 6 files / 15 pairs).
 
 This test is the ratchet: the generator, not the index, owns those files.
+
+The original pattern ``_sota_contract_*.py`` required the counter
+underscore, so a counter-less ``scripts/_sota_contract.py`` (same family,
+landed by 72cb902 "Clean up project state") slipped past both the cleanup
+glob and this ratchet. The pattern below drops the underscore, catching
+``_sota_contract.py`` and ``_sota_contract_<i>.py`` alike; the counter-less
+file was untracked on 2026-09-21 (lane r8-provably).
 """
 
 from __future__ import annotations
@@ -21,7 +28,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _tracked_scratch_contracts() -> list[str]:
     out = subprocess.run(
-        ["git", "ls-files", "scripts/_sota_contract_*.py"],
+        ["git", "ls-files", "scripts/_sota_contract*.py"],
         cwd=_REPO_ROOT,
         capture_output=True,
         text=True,

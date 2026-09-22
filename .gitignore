@@ -20,6 +20,7 @@ venv/
 .uv/
 uv.lock
 scripts/_bench_contract.py
+scripts/_sota_contract*.py
 
 # Local workspace/runtime artifacts
 .lake/
