@@ -966,7 +966,9 @@ class TestHypothesisSpecificPaths:
             result = hypothesis_check(
                 fn, post=lambda x, r: isinstance(r, (int, float)), max_examples=5
             )
-        assert isinstance(result.passed, bool)
+        # W26-PROV1 characterization: untyped fn + isinstance post holds for every
+        # generated input, so the zero/one-param fallback path always reports True.
+        assert result.passed is True
 
     def test_hypothesis_check_signature_fails(self) -> None:
         """Cover lines 311-312 — inspect.signature exception path."""
@@ -977,8 +979,9 @@ class TestHypothesisSpecificPaths:
         with patch.object(inspect, "signature", side_effect=ValueError("no signature")):
             # With no params detected (empty list), runs zero-param path
             result = hypothesis_check(lambda: 42, post=lambda r: r == 42, max_examples=3)
-            # Result may pass or fail depending on path taken
-            assert isinstance(result.passed, bool)
+            # W26-PROV1 characterization: zero-param fallback calls fn() -> 42 and
+            # post(42) is True, so passed is deterministically True, not a coin flip.
+            assert result.passed is True
 
     def test_proven_property_unknown_triggers_hypothesis(self) -> None:
         """Cover line 431 — UNKNOWN Z3 result triggers hypothesis_check."""
@@ -1262,11 +1265,17 @@ class TestPytestPluginPaths:
         reporter.write_line.assert_not_called()
 
     def test_session_collector_fixture_line(self) -> None:
-        """Cover lines 198-199 (_provably_session_collector fixture def)."""
+        """Cover lines 198-199 (_provably_session_collector fixture def).
+
+        W26-PROV1 repair: ``callable()`` on a fixture object can never fail.
+        Call the underlying function and assert its actual contract — it binds
+        the session onto the config for the terminal summary to find.
+        """
         from provably.pytest_plugin import _provably_session_collector
 
-        # Just check it's a fixture
-        assert callable(_provably_session_collector)
+        request = MagicMock()
+        _provably_session_collector.__wrapped__(request)
+        assert request.config._provably_session is request.session
 
 
 # ---------------------------------------------------------------------------
@@ -2020,13 +2029,16 @@ class TestPytestPluginGaps:
         # non-PC proof should be ignored
         assert len(certs) == 0
 
-    def test_provably_session_collector_fixture(self) -> None:
-        """Cover lines 198-201: _provably_session_collector fixture registration."""
-        # The fixture is autouse=session, so it runs automatically in any pytest session.
-        # We just verify it's importable and callable.
-        from provably.pytest_plugin import _provably_session_collector
+    def test_provably_session_collector_fixture(self, request: Any) -> None:
+        """Cover lines 198-201: the autouse session collector really ran.
 
-        assert callable(_provably_session_collector)
+        W26-PROV1 repair: this was an exact duplicate of
+        ``test_session_collector_fixture_line`` (same dead ``callable()``
+        assert). The sibling test now pins the binding contract on a mock; this
+        one proves the plugin is loaded via the pytest11 entry point and its
+        autouse session fixture bound the real config.
+        """
+        assert getattr(request.config, "_provably_session", None) is not None
 
     def test_collect_proof_certs_none_module_in_sys(self) -> None:
         """Cover line 164: sys.modules entry with None value."""

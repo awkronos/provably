@@ -570,12 +570,11 @@ class TestLean4VerifyPaths:
 
         f = lambda x: x  # noqa: E731
         cert = m.verify_with_lean4(f)
-        assert cert.status in {
-            Status.SKIPPED,
-            Status.TRANSLATION_ERROR,
-            Status.VERIFIED,
-            Status.UNKNOWN,
-        }
+        # W26-PROV1 characterization: the lambda source parses to an Assign, not
+        # a FunctionDef, so translation fails with this exact status/message
+        # every run — the four-way tolerance set accepted states it can never reach.
+        assert cert.status == Status.TRANSLATION_ERROR
+        assert "not a function definition" in cert.message.lower()
 
     def test_refinement_error_in_type_returns_translation_error(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2090,10 +2089,18 @@ class TestTranslatorMatchAndWhile:
             return x
 
         cert = verify_function(f, post=lambda x, r: r == x)
-        assert cert.status in {Status.VERIFIED, Status.TRANSLATION_ERROR}
+        # W26-PROV1 characterization: dead-loop body, proves VERIFIED every run.
+        assert cert.status == Status.VERIFIED
 
-    def test_match_statement_if_python_310_plus(self) -> None:
-        """Cover match/case translation (Python 3.10+)."""
+    def test_match_statement_if_python_310_plus(self, tmp_path) -> None:
+        """Cover match/case translation (Python 3.10+).
+
+        W26-PROV1 repair: compiling under ``"<test>"`` made ``inspect.getsource``
+        fail, so ``verify_function`` silently SKIPPED and the match/case leg was
+        never exercised — the four-way tolerance set hid that. Compiling against
+        a real file makes the source reachable, and the translator then genuinely
+        VERIFIES the match.
+        """
 
         from provably.engine import Status, verify_function
 
@@ -2106,17 +2113,14 @@ def classify(x):
         case _:
             return 1
 """
+        path = tmp_path / "classify_probe.py"
+        path.write_text(code)
         globs: dict = {}
-        exec(compile(code, "<test>", "exec"), globs)
+        exec(compile(code, str(path), "exec"), globs)
         classify = globs["classify"]
 
         cert = verify_function(classify, pre=lambda x: x >= 0, post=lambda x, r: r >= 0)
-        assert cert.status in {
-            Status.VERIFIED,
-            Status.UNKNOWN,
-            Status.TRANSLATION_ERROR,
-            Status.SKIPPED,
-        }
+        assert cert.status == Status.VERIFIED
 
     def test_subscript_on_non_int_sort_raises(self) -> None:
         from provably.translator import TranslationError, Translator

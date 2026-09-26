@@ -1046,24 +1046,38 @@ class TestDecoratorsLines278_279_NParamsZero:
 
 
 class TestDecoratorsLine302_UnknownLogging:
-    def test_verified_logs_unknown_status(self) -> None:
-        """@verified with 1ms timeout logs UNKNOWN status (or verifies fast)."""
+    def test_verified_logs_unknown_status(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """@verified with an UNKNOWN certificate emits the line-302 log record.
+
+        W26-PROV1 repair: the old test rode a 1 ms solver timeout, so the status
+        was a timing coin flip and no log was ever asserted — the point of the
+        test. Stubbing the engine to return UNKNOWN makes the branch
+        deterministic and the emitted record assertable.
+        """
         import logging
 
-        configure(log_level="DEBUG")
-        try:
+        import provably.decorators as dec_mod
 
-            @verified(timeout_ms=1, post=lambda x, r: r >= x)
+        cert = ProofCertificate(
+            function_name="f",
+            source_hash="stub",
+            status=Status.UNKNOWN,
+            preconditions=(),
+            postconditions=(),
+            message="timed out",
+        )
+        monkeypatch.setattr(dec_mod, "verify_function", lambda func, **kw: cert)
+
+        with caplog.at_level(logging.INFO, logger="provably"):
+
+            @verified(post=lambda x, r: r >= x)
             def f(x: float) -> float:
-                if x >= 0:
-                    return x
-                return -x
+                return x
 
-            # Status is UNKNOWN or VERIFIED — both are valid
-            assert f.__proof__.status in (Status.UNKNOWN, Status.VERIFIED)
-        finally:
-            configure(log_level="WARNING")
-            configure(timeout_ms=5000)
+        assert f.__proof__.status == Status.UNKNOWN
+        assert any(rec.getMessage() == "UNKNOWN f (timeout?)" for rec in caplog.records)
 
 
 # ===========================================================================
@@ -1072,18 +1086,30 @@ class TestDecoratorsLine302_UnknownLogging:
 
 
 class TestDecoratorsLine306_SkippedLogging:
-    def test_verified_logs_skipped_status(self) -> None:
-        """@verified with no post condition logs SKIPPED."""
+    def test_verified_logs_skipped_status(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """@verified with no post condition logs SKIPPED and emits the record.
+
+        W26-PROV1 repair: the status assert alone left the test's namesake
+        (the logging path, decorators.py:306) unverified; now the emitted DEBUG
+        record is asserted too.
+        """
         import logging
 
         configure(log_level="DEBUG")
         try:
             # No post condition → SKIPPED ("Nothing to prove")
-            @verified
-            def f(x: float) -> float:
-                return x + 1
+            with caplog.at_level(logging.DEBUG, logger="provably"):
+
+                @verified
+                def f(x: float) -> float:
+                    return x + 1
 
             assert f.__proof__.status == Status.SKIPPED
+            assert any(
+                rec.getMessage().startswith("SKIPPED f:") for rec in caplog.records
+            )
         finally:
             configure(log_level="WARNING")
 
