@@ -19,7 +19,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from unittest import mock
 
 import pytest
@@ -215,6 +215,43 @@ class TestLean4StatementResiduals:
         # "Unsupported Lean4 expression: List").
         with pytest.raises(ValueError, match="Unsupported Lean4 comparison"):
             L._statements_to_lean(_stmts("return a is b"), {"a": "a", "b": "b"})
+
+
+class TestLean4VerifyGuardPaths:
+    """lean4.py verify_with_lean4 soundness guards: a non-Boolean pre/post
+    lambda must produce a TRANSLATION_ERROR certificate, never a silent
+    True-constraint.  Deterministic before any binary call."""
+
+    def _cert(self, monkeypatch, **kwargs: Any) -> Any:
+        monkeypatch.setattr(L, "HAS_LEAN4", True)  # pass the install gate
+        def g(x: float) -> float:
+            return x / 2
+
+        return L.verify_with_lean4(g, **kwargs)
+
+    def test_non_bool_pre_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cert = self._cert(
+            monkeypatch, pre=lambda x: 1, post=lambda x, r: r >= 0
+        )
+        assert cert.status is L.Status.TRANSLATION_ERROR
+        assert cert.message == "Precondition must produce a symbolic Boolean expression"
+
+    def test_non_bool_post_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cert = self._cert(
+            monkeypatch, pre=lambda x: x > 0, post=lambda x, r: 42
+        )
+        assert cert.status is L.Status.TRANSLATION_ERROR
+        assert cert.message == "Postcondition must produce a symbolic Boolean expression"
+
+    def test_raising_pre_surfaced_as_translation_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def boom(x: object) -> bool:
+            raise RuntimeError("nope")
+
+        cert = self._cert(monkeypatch, pre=boom, post=lambda x, r: r >= 0)
+        assert cert.status is L.Status.TRANSLATION_ERROR
+        assert "Precondition error" in cert.message
 
 
 class TestLean4FreshResultSymbol:

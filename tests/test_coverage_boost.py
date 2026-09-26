@@ -1634,15 +1634,24 @@ class TestTranslatorEdges2:
             t.translate(func, {"x": z3.Real("x")})
 
     def test_coerce_incompatible_raises(self) -> None:
+        # W26-PROV1 repair (RSI row risk 71.4): the name promises the
+        # TranslationError raise path (translator.py "Cannot coerce sorts"),
+        # but the old body exercised only the bool→Real PROMOTION (which
+        # never raises) behind an always-true `or` assertion.  Both halves
+        # are now pinned with their true outcomes.
         from provably.translator import TranslationError, Translator
 
         t = Translator()
-        # Bool coercion to Real path
+        # Bool + Real is the documented promotion path: it must COERCE.
         b = z3.Bool("b")
         r = z3.Real("x")
-        # Both bool→int path and reverse
         a_coerced, b_coerced = t._coerce(b, r)
-        assert a_coerced.sort() == z3.RealSort() or b_coerced.sort() == z3.RealSort()
+        assert a_coerced.sort() == z3.RealSort()
+        assert b_coerced.sort() == z3.RealSort()
+        # Genuinely incompatible sorts take the raise path.
+        s = z3.String("s")
+        with pytest.raises(TranslationError, match="Cannot coerce sorts: Real and String"):
+            t._coerce(r, s)
 
     def test_coerce_both_same_sort(self) -> None:
         from provably.translator import Translator

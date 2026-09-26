@@ -2354,19 +2354,45 @@ class TestEngineCorruptDiskCache:
 
 
 class TestLean4VerifyWithLean4Hints:
-    """Cover lean4.verify_with_lean4 get_type_hints exception path."""
+    """Exercise lean4.verify_with_lean4 get_type_hints exception path.
 
-    def test_verify_with_lean4_hints_exception(self) -> None:
-        """Cover lines 510-511: get_type_hints raises -> hints = {}."""
+    W26-PROV1 repair (RSI row risk 132.3): the previous body skipped
+    whenever Lean4 WAS installed (i.e. on every host that could run it)
+    and never called ``verify_with_lean4`` at all — the hints={} fallback
+    (lean4.py, ``except Exception: hints = {}``) had zero test touch and
+    the class docstring's claim was false green.  Now the function IS
+    called, deterministically, on every host.
+    """
+
+    def test_verify_with_lean4_hints_exception(self, monkeypatch) -> None:
+        """get_type_hints raises -> hints={} -> AST fallback resolves x to Real."""
         from provably import lean4
-        from provably.lean4 import verify_with_lean4
 
-        if lean4.HAS_LEAN4:
-            pytest.skip("Test only relevant when Lean4 is not installed")
+        def f(x: BadAnnotationType999) -> float:  # type: ignore[name-defined]  # noqa: F821 - undefined name is the test (forces NameError in get_type_hints)
+            return x / 2
 
-        # When HAS_LEAN4 is False, verify_with_lean4 returns SKIPPED immediately.
-        # We can't cover the hints={} branch without HAS_LEAN4=True.
-        # Instead, test that export_lean4 covers the equivalent path.
+        captured: dict[str, str] = {}
+
+        def fake_check(lean_code: str, *a: object, **k: object) -> tuple[bool, str]:
+            captured["code"] = lean_code
+            return True, ""
+
+        # Force the gate so the hints path runs on hosts with AND without
+        # elan; stub the binary leg so the test is environment-independent
+        # (the stub is the boundary — theorem generation is what's pinned).
+        monkeypatch.setattr(lean4, "HAS_LEAN4", True)
+        monkeypatch.setattr(lean4, "check_lean4_proof", fake_check)
+
+        cert = lean4.verify_with_lean4(f, pre=lambda x: x >= 0, post=lambda x, r: r >= 0)
+        assert cert.status == lean4.Status.VERIFIED, cert.message
+        assert "code" in captured, "check_lean4_proof never received a theorem"
+        # The NameError-prone annotation fell back through _ast_annotation_type
+        # to the float default — x must appear as ℝ (Lean's Real), and the
+        # theorem must be about THIS function (not silently skipped).
+        assert "def f_impl (x : ℝ)" in captured["code"]
+        assert "theorem f_verified" in captured["code"]
+
+    def test_export_lean4_rejects_unproven_cast(self) -> None:
         from provably.lean4 import export_lean4
 
         def f(x: BadAnnotationType999) -> float:  # type: ignore[name-defined]  # noqa: F821 - undefined name is the test (forces NameError)
