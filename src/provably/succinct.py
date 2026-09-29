@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
+import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -47,6 +49,10 @@ class SuccinctProof:
     vc_sha256: str  # hex SHA-256 of the SMT-LIB script the proof attests
     cert_path: str  # path to the saved SP1 proof
     backend: str = "sp1"
+    # Defaults preserve direct construction by existing callers. The proving
+    # wrapper always fills both fields from the fresh output's exact bytes.
+    artifact_sha256: str = ""
+    artifact_len: int = 0
 
 
 def _bin() -> str:
@@ -99,7 +105,9 @@ def prove_carrying(cert: ProofCertificate, out_path: str | os.PathLike[str]) -> 
     """Produce a succinct SP1 proof that the cert's VC is unsatisfiable.
 
     Shells to ``pcc-sp1 prove`` (which re-checks inside the zkVM and
-    self-verifies), saving the certificate to ``out_path``.
+    self-verifies), saving the certificate to ``out_path``. Invalidates any
+    old output before invoking the prover; success requires a fresh regular,
+    nonempty artifact, whose exact bytes are bound in the returned proof.
 
     Raises :class:`SuccinctError` if the cert isn't ``VERIFIED``, carries no
     VC, the VC is outside the re-checkable Bool fragment, or the prover fails.
@@ -107,23 +115,84 @@ def prove_carrying(cert: ProofCertificate, out_path: str | os.PathLike[str]) -> 
     """
     _require_vc(cert)
     out = Path(out_path)
+    prover = _bin()
+    resolved = shutil.which(prover)
+    if _paths_alias(out, Path(prover)) or (
+        resolved is not None and _paths_alias(out, Path(resolved))
+    ):
+        raise SuccinctError(f"SP1 output path {out} aliases prover executable {prover}")
     tmp = _write_vc(cert.smt_lib)
     try:
-        res = subprocess.run(
-            [_bin(), "prove", "--script", str(tmp), "--out", str(out)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError as e:
-        raise SuccinctError(f"pcc-sp1 binary not found ({_bin()}): {e}") from e
+        if _paths_alias(out, tmp):
+            raise SuccinctError("SP1 output path collides with the private VC file")
+        _invalidate_output(out)
+        try:
+            try:
+                res = subprocess.run(
+                    [prover, "prove", "--script", str(tmp), "--out", str(out)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            except FileNotFoundError as e:
+                raise SuccinctError(f"pcc-sp1 binary not found ({prover}): {e}") from e
+            except OSError as e:
+                raise SuccinctError(f"failed to run pcc-sp1 ({prover}): {e}") from e
+            if res.returncode != 0:
+                raise SuccinctError(
+                    "pcc-sp1 prove failed (VC outside Bool fragment, or prover error): "
+                    f"{res.stderr.strip() or res.stdout.strip()}"
+                )
+            artifact_len, artifact_digest = _bind_artifact(out)
+        except SuccinctError as e:
+            try:
+                _invalidate_output(out)
+            except SuccinctError as cleanup:
+                raise SuccinctError(f"{e}; {cleanup}") from e
+            raise
     finally:
         tmp.unlink(missing_ok=True)
-    if res.returncode != 0:
-        raise SuccinctError(
-            "pcc-sp1 prove failed (VC outside Bool fragment, or prover error): "
-            f"{res.stderr.strip() or res.stdout.strip()}"
-        )
     # Matches the digest the guest commits: sha256 of the exact script bytes.
     digest = hashlib.sha256(cert.smt_lib.encode("utf-8")).hexdigest()
-    return SuccinctProof(vc_sha256=digest, cert_path=str(out))
+    return SuccinctProof(
+        vc_sha256=digest,
+        cert_path=str(out),
+        artifact_sha256=artifact_digest,
+        artifact_len=artifact_len,
+    )
+
+
+def _paths_alias(left: Path, right: Path) -> bool:
+    if left == right:
+        return True
+    try:
+        return left.samefile(right)
+    except OSError:
+        return False
+
+
+def _invalidate_output(out: Path) -> None:
+    try:
+        out.unlink(missing_ok=True)
+    except OSError as e:
+        raise SuccinctError(f"could not invalidate prior SP1 artifact {out}: {e}") from e
+
+
+def _bind_artifact(out: Path) -> tuple[int, str]:
+    try:
+        if not stat.S_ISREG(out.lstat().st_mode):
+            raise SuccinctError(f"successful prover output is not a regular file: {out}")
+        with out.open("rb") as artifact:
+            initial_len = os.fstat(artifact.fileno()).st_size
+            if initial_len == 0:
+                raise SuccinctError(f"successful prover produced an empty artifact: {out}")
+            digest = hashlib.sha256()
+            size = 0
+            while chunk := artifact.read(64 * 1024):
+                digest.update(chunk)
+                size += len(chunk)
+            if size != initial_len:
+                raise SuccinctError("SP1 artifact changed while binding it")
+        return size, digest.hexdigest()
+    except OSError as e:
+        raise SuccinctError(f"could not bind fresh SP1 artifact {out}: {e}") from e
