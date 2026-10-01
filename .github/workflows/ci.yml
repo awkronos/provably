@@ -41,7 +41,15 @@ jobs:
         # Start coverage before pytest loads the installed provably plugin;
         # pytest-cov otherwise imports the package before measurement and
         # emits a module-not-measured warning.
+        #
+        # Gate raised 90 -> 95 (2026-10-01): test_coverage_95.py's name claims
+        # ">=95%" but no assertion measured it — the only enforced number was
+        # 90 (bec2d54, measured baseline 93 then). This gate is now the
+        # measured assertion of that claim. Measured baseline after the
+        # engine.py fast_key/orjson/rlimit gap tests landed: 98.19% exact
+        # (98 displayed; 97.93% immediately before them), py3.13 branch
+        # coverage. 95 keeps ~3pt headroom, the margin the old gate had.
         run: |
           coverage erase
           coverage run --source=provably -m pytest tests/
-          coverage report --fail-under=90
+          coverage report --fail-under=95
