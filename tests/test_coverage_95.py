@@ -542,7 +542,7 @@ class TestEngineDefLines:
 
         # Classes without __code__ hit the AttributeError path
         # Actually MyCallable() has __code__ via __call__... let's use int itself
-        sig = _contract_sig(42)  # type: ignore -- not a callable, triggers repr()
+        sig = _contract_sig(42)  # type: ignore  # not a callable, triggers repr()
         assert isinstance(sig, str)
 
     def test_disk_cache_path_none(self) -> None:
@@ -2041,7 +2041,7 @@ class TestPytestPluginGaps:
 
         fake_item = MagicMock()
         fake_item.module = fake_mod
-        certs: dict = {}
+        certs: dict[str, Any] = {}
         _scan_item_for_proofs(fake_item, certs)
         # non-PC proof should be ignored
         assert len(certs) == 0
