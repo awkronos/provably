@@ -1,4 +1,16 @@
-"""Targeted tests for every remaining uncovered line.
+"""Targeted tests for the measured uncovered-line list at authoring time.
+
+Name-vs-reality note (2026-10-01): this file formerly claimed "every remaining
+uncovered line", which the 2026-10-01 measurement falsified — 33 statements
+and 39 branch arcs were still uncovered, in modules this file does not reach
+(lean4.py 22 stmts: optional toolchain paths; hypothesis.py lines 85-87: the
+nested-Annotated strategy loop; engine.py the fast_key=None and rlimit==0
+arcs, whose guard-false branches no lambda contract can trigger). Engine.py's residual gaps are now
+closed by TestEngineFastKeyNoneCachePaths / TestEngineOrjsonDiskBranches /
+TestEngineRlimitZeroBranch in test_coverage_95.py. The "measured coverage"
+claim for the suite as a whole is enforced by the CI gate and ``make
+coverage`` (``coverage report --fail-under=95``), not by any single file here.
+Line numbers below are authoring-time targets, not a live contract.
 
 Coverage targets:
 - translator.py: 148, 167, 199, 206, 212, 243-247, 281, 292, 306, 316, 323-327,

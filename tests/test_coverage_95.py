@@ -1,4 +1,16 @@
-"""Targeted tests to push coverage from 91% to >=95%.
+"""Targeted tests for measured coverage gaps in the provably engine stack.
+
+Name-vs-reality pin (2026-10-01): this file's name claimed ">=95%" but asserted
+nothing about coverage, and the only enforced number in the repo was the CI gate
+at 90% ("ci: gate test coverage at 90% (measured baseline 93%)" — bec2d54).
+Measured truth of the full suite on py3.13, branch coverage, CI recipe
+(``coverage run --source=provably -m pytest tests/``): **97.93%** before the
+engine-gap tests below landed, **98.19%** after (2362 stmts; 33→30 missed,
+1114 branches; 39→33 partial). The >=95% claim is now enforced as a *measured*
+assertion — CI and ``make coverage`` run ``coverage report --fail-under=95``
+over exactly that recipe. This file itself asserts behavior, not a percentage:
+a test cannot measure the coverage of its own run without recursing into a
+second suite.
 
 Covers the following real behavioral gaps (not just import/class-def quirks):
 - hypothesis.py: ImportError path, nested Annotated, Lt max_value branch,
@@ -14,6 +26,11 @@ Covers the following real behavioral gaps (not just import/class-def quirks):
 - translator.py: various error branches, _z3_int_cast BoolSort,
                  _z3_float_cast BoolSort, filter None predicate branches
 - pytest_plugin.py: terminal summary with counterexample notes
+- engine.py (2026-10-01 RSI pass, measured residual gaps): orjson disk
+  read/write branches (orjson absent in the test env), the fast_key=None
+  cache-hit / disk-hit / save arcs (627->629, 632->634, 879->881 — every prior
+  contract was a lambda/function, so _fast_key was never None there), and the
+  rlimit==0 solver arc (711->715 — default config rlimit is 100_000_000)
 """
 
 from __future__ import annotations
@@ -3281,3 +3298,211 @@ class TestLean4VerifyWithRefinementsMocked:
             if mod_name in sys.modules:
                 del sys.modules[mod_name]
             os.unlink(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# engine.py — measured residual gaps (2026-10-01 RSI pass)
+#
+# The 2026-10-01 baseline measurement (full suite, py3.13, branch coverage)
+# left exactly these engine.py gaps. Every prior test used lambda/function
+# contracts, which always yield a non-None _fast_key, and the default config
+# rlimit is 100_000_000 — so the guard-false arcs below were unreachable.
+# ---------------------------------------------------------------------------
+
+
+class _InstancePost:
+    """Callable contract with no ``__code__``.
+
+    ``_fast_key`` hits its AttributeError path → None, while
+    ``_contract_sig`` falls back to ``repr(fn)`` (stable per instance within
+    a process) and ``inspect.signature`` resolves the bound ``__call__``.
+    This is the only legal way to drive the cache/save paths with
+    fast_key=None: a plain function or lambda can never produce None there.
+    """
+
+    def __call__(self, x, r):  # noqa: ANN001 - operands are z3 expressions
+        return r > x
+
+
+class TestEngineFastKeyNoneCachePaths:
+    """engine.py arcs 627->629, 632->634, 879->881: cache and persistence
+    paths taken when fast_key is None."""
+
+    def test_memory_cache_hit_without_fast_key(self) -> None:
+        """Arc 627->629: second verify hits the memory cache; the guard at
+        line 627 must stay false (fast_key None), so _fast_cache remains
+        empty while the stored cert object itself is returned."""
+        from provably import verify_function
+        from provably.engine import Status, _fast_cache
+
+        def add_one(x: float) -> float:
+            return x + 1
+
+        post = _InstancePost()
+        cert1 = verify_function(add_one, post=post)
+        assert cert1.status == Status.VERIFIED
+        # Cold path: guard at 879 false → nothing was written to the fast cache.
+        assert _fast_cache == {}
+
+        cert2 = verify_function(add_one, post=post)
+        # Memory-cache hit returns the very same object, still without any
+        # fast-cache write (guard at 627 false).
+        assert cert2 is cert1
+        assert _fast_cache == {}
+
+    def test_disk_cache_hit_without_fast_key(self, tmp_path, monkeypatch) -> None:
+        """Arcs 879->881 and 632->634: a cold verify with fast_key=None still
+        persists to disk, and after clearing the memory cache the next verify
+        returns the disk copy without touching the fast cache or building Z3."""
+        import z3
+
+        from provably import clear_cache, configure, verify_function
+        from provably.engine import Status
+
+        def add_one(x: float) -> float:
+            return x + 1
+
+        built: list[int] = []
+        real_init = z3.Solver.__init__
+
+        def _spy(self, *args, **kwargs):  # noqa: ANN001
+            built.append(1)
+            return real_init(self, *args, **kwargs)
+
+        post = _InstancePost()
+        configure(cache_dir=str(tmp_path / "pcache"))
+        monkeypatch.setattr(z3.Solver, "__init__", _spy)
+        try:
+            cert1 = verify_function(add_one, post=post)
+            assert cert1.status == Status.VERIFIED
+            # Spy really fires on a cold run (guards the next assertion
+            # against being vacuously true).
+            assert len(built) >= 1
+
+            clear_cache()
+            built.clear()
+            cert2 = verify_function(add_one, post=post)
+            assert cert2.status == Status.VERIFIED
+            # Rebuilt from disk: a fresh object, same identity fields.
+            assert cert2 is not cert1
+            assert cert2.function_name == cert1.function_name
+            assert cert2.source_hash == cert1.source_hash
+            # Arc 632->634: disk hit returned before any solver construction.
+            assert built == []
+        finally:
+            configure(cache_dir=None)
+
+
+class TestEngineOrjsonDiskBranches:
+    """engine.py 477-478/507, arcs 476->477 and 506->507: the orjson
+    read/write branches. orjson is not installed in the test env, so these
+    are only reachable via an explicitly-patched module. The fake marks every
+    payload with a sentinel, so a silently-fallen-back stdlib path cannot
+    pass as 'covered'."""
+
+    def test_orjson_round_trip_markers(self, tmp_path, monkeypatch) -> None:
+        import json
+
+        import provably.engine as engine
+        from provably import configure
+        from provably.engine import (
+            ProofCertificate,
+            Status,
+            _disk_cache_path,
+            _load_from_disk,
+            _save_to_disk,
+        )
+
+        calls = {"dumps": 0, "loads": 0}
+
+        class _FakeOrjson:
+            @staticmethod
+            def dumps(payload):  # noqa: ANN001
+                calls["dumps"] += 1
+                marked = dict(payload)
+                marked["__fake_orjson_marker__"] = 1
+                return json.dumps(marked, separators=(",", ":")).encode()
+
+            @staticmethod
+            def loads(raw):  # noqa: ANN001
+                calls["loads"] += 1
+                if b'"__fake_orjson_marker__"' not in raw:
+                    raise ValueError("payload never passed through fake orjson.dumps")
+                data = json.loads(raw)
+                data.pop("__fake_orjson_marker__", None)
+                return data
+
+        monkeypatch.setattr(engine, "_HAS_ORJSON", True)
+        monkeypatch.setattr(engine, "_orjson", _FakeOrjson)
+        configure(cache_dir=str(tmp_path / "ocache"))
+        try:
+            cert = ProofCertificate(
+                function_name="fn",
+                source_hash="cafe1234",
+                status=Status.VERIFIED,
+                preconditions=("x >= 0",),
+                postconditions=("result >= 0",),
+            )
+            _save_to_disk("orjson_key", cert)
+            path = _disk_cache_path("orjson_key")
+            assert path is not None
+            raw = path.read_bytes()
+            # Line 507 really wrote the file through the fake (arc 506->507).
+            assert b'"__fake_orjson_marker__"' in raw
+
+            loaded = _load_from_disk("orjson_key")
+            assert loaded is not None
+            assert loaded.function_name == "fn"
+            assert loaded.status == Status.VERIFIED
+            assert loaded.source_hash == "cafe1234"
+            # Arc 476->477: the load used the fake's loads, not stdlib json.
+            assert calls == {"dumps": 1, "loads": 1}
+        finally:
+            configure(cache_dir=None)
+
+
+class TestEngineRlimitZeroBranch:
+    """engine.py arc 711->715: rlimit == 0 must skip ``s.set("rlimit", ...)``
+    entirely. Default config rlimit is 100_000_000, so every prior verify took
+    the true arc; the false arc was never exercised."""
+
+    def test_rlimit_zero_skips_solver_rlimit(self, monkeypatch) -> None:
+        import z3
+
+        from provably import clear_cache, verify_function
+        from provably.engine import Status, _config
+
+        sets: list[tuple[str, object]] = []
+        real_set = z3.Solver.set
+
+        def _spy_set(self, *args, **kwargs):  # noqa: ANN001
+            for i in range(0, len(args) - 1, 2):
+                sets.append((str(args[i]), args[i + 1]))
+            for k, v in kwargs.items():
+                sets.append((k, v))
+            return real_set(self, *args, **kwargs)
+
+        monkeypatch.setattr(z3.Solver, "set", _spy_set)
+
+        def add_one(x: float) -> float:
+            return x + 1
+
+        old_rlimit = _config["rlimit"]
+        try:
+            _config["rlimit"] = 0
+            clear_cache()
+            cert0 = verify_function(add_one, post=lambda x, r: r > x)
+            assert cert0.status == Status.VERIFIED
+            # Arc 711->715: with rlimit 0 no rlimit call reaches the solver at
+            # all (timeout may still be set).
+            assert [k for k, _ in sets if k == "rlimit"] == []
+
+            _config["rlimit"] = 250_000
+            clear_cache()
+            sets.clear()
+            cert1 = verify_function(add_one, post=lambda x, r: r > x)
+            assert cert1.status == Status.VERIFIED
+            # Guard still honors a positive configured rlimit (arc 711->712).
+            assert ("rlimit", 250_000) in sets
+        finally:
+            _config["rlimit"] = old_rlimit
