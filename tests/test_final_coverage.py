@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+from typing import Any
 
 import pytest
 from conftest import requires_z3
@@ -53,7 +54,7 @@ def _translate(
     source: str,
     param_vars: dict[str, z3.ExprRef],
     closure_vars: dict[str, z3.ExprRef] | None = None,
-    verified_contracts: dict | None = None,
+    verified_contracts: dict[str, Any] | None = None,
 ) -> z3.ExprRef | None:
     func_ast = _parse_func(source)
     t = Translator(closure_vars=closure_vars or {}, verified_contracts=verified_contracts or {})
@@ -1222,7 +1223,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
         async def async_f(x: float) -> float:
             return x * 2
 
-        result = asyncio.run(async_f(3))
+        result: float = asyncio.run(async_f(3))
         assert result == 6
 
     def test_async_runtime_checked_raise_false_logs_not_raises(self) -> None:
@@ -1234,7 +1235,7 @@ class TestDecoratorsLines435_436_446_447_AsyncRuntimeChecked:
             return x
 
         # Should not raise
-        result = asyncio.run(async_f(-1))
+        result: float = asyncio.run(async_f(-1))
         assert result == -1
 
 
@@ -2076,7 +2077,7 @@ class TestEngineEmptyClosureCell:
             "<string>",
             "exec",
         )
-        ns: dict = {}
+        ns: dict[str, Any] = {}
         exec(code, ns)  # noqa: S102
         try:
             inner = ns["outer"]()
