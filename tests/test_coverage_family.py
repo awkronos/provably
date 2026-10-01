@@ -1,28 +1,67 @@
-"""Coverage boost: target uncovered lines to push from 81% → 90%+.
+"""Coverage family — the single-module home of the coverage test family.
 
-Maps of what each class covers:
-- TestInitImports          : __init__.py lines 30-59 (0% → covered)
-- TestTypesModule          : types.py lines 18-42, 72, 104-208, 284-290
-- TestLean4Module          : lean4.py lines 26-57, 71-74, 88, 113, 138, 151-152, 161, 166, 184-198
-- TestLean4Verify          : lean4.py lines 479-636 (verify_with_lean4 paths)
-- TestEngineModule         : engine.py lines 22-54, 97-139, 143, 153, 176-214, 250-251, 287-290
-- TestEngineAdvanced       : engine.py lines 363-372, 749, 785, 801, 855-912
-- TestDecoratorsModule     : decorators.py lines 43-66, 71-80, 103, 148-165, 240, 360, 411, 486
-- TestTranslatorModule     : translator.py lines 43-86, 90, 94, 98, 103, 105, 108-227
-- TestTranslatorEdges2     : translator.py lines 245, 281, 330, 368, 383, 413, 495, 557, 575, 592-928
-- TestPytestPluginEdges    : pytest_plugin.py lines 19-34, 51, 64, 81, 91, 123-124, 146
+Family law (lane rsi-provably2, 2026-10-01): coverage-family tests live in
+ONE module.  ``tests/test_coverage_boost.py`` (221 tests),
+``tests/test_coverage_expansion.py`` (85), and ``tests/test_runtime_checked.py``
+(23) were consolidated here; the 8 tests that existed body-identically in both
+boost (``TestTypesModule`` x5, ``TestLean4ModuleLevel`` x3) and expansion
+(``TestTypesModuleCoverage``/``TestLean4Coverage``) were deduplicated — the
+expansion-side copies were dropped, so 221 + 85 + 23 − 8 = 321 tests remain
+with zero coverage loss.
+
+New gap-closing tests belong in this module under the matching PART banner —
+do not add another ``test_coverage_*.py`` sibling.  The file sprawl the RSI
+code map kept flagging is what let body-identical twins drift into two files
+under different class names.
+
+PART banners below preserve each source file's own provenance docstring, so
+the line-map comments ("what each class covers") survive the merge.
 """
 
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
+import logging
 import sys
+import textwrap
 from pathlib import Path
 from typing import Annotated, Any
 
 import pytest
 import z3
+
+from provably import verify_function
+from provably.decorators import (
+    ContractViolationError,
+    runtime_checked,
+)
+from provably.translator import (
+    TranslationError,
+    Translator,
+    _z3_bool_cast,
+    _z3_float_cast,
+    _z3_int_cast,
+    _z3_pow,
+)
+
+# ===========================================================================
+# PART I — line-targeted coverage boost (orig. test_coverage_boost.py)
+# ===========================================================================
+# Coverage boost: target uncovered lines to push from 81% → 90%+.
+#
+# Maps of what each class covers:
+# - TestInitImports          : __init__.py lines 30-59 (0% → covered)
+# - TestTypesModule          : types.py lines 18-42, 72, 104-208, 284-290
+# - TestLean4Module          : lean4.py lines 26-57, 71-74, 88, 113, 138, 151-152, 161, 166, 184-198
+# - TestLean4Verify          : lean4.py lines 479-636 (verify_with_lean4 paths)
+# - TestEngineModule         : engine.py lines 22-54, 97-139, 143, 153, 176-214, 250-251, 287-290
+# - TestEngineAdvanced       : engine.py lines 363-372, 749, 785, 801, 855-912
+# - TestDecoratorsModule     : decorators.py lines 43-66, 71-80, 103, 148-165, 240, 360, 411, 486
+# - TestTranslatorModule     : translator.py lines 43-86, 90, 94, 98, 103, 105, 108-227
+# - TestTranslatorEdges2     : translator.py lines 245, 281, 330, 368, 383, 413, 495, 557, 575, 592-928
+# - TestPytestPluginEdges    : pytest_plugin.py lines 19-34, 51, 64, 81, 91, 123-124, 146
 
 # ===========================================================================
 # __init__.py — 0% → bring imports to life
@@ -2407,3 +2446,1184 @@ class TestEngineContractSig:
         finally:
             em.Translator = original
             clear_cache()
+
+
+# ===========================================================================
+# PART II — branch coverage expansion (orig. test_coverage_expansion.py; 8 body-identical twins deduplicated)
+# ===========================================================================
+# Coverage expansion tests — targeting every uncovered branch.
+#
+# Organized by module and line number to systematically close coverage gaps.
+
+# =============================================================================
+# translator.py — while-loop branches
+# =============================================================================
+
+
+class TestWhileLoopBranches:
+    """Cover while-loop else, early return, max-unroll paths."""
+
+    def test_while_else_clause_warning(self) -> None:
+        """Line 482-483: while/else produces warning."""
+        src = """
+def f(x):
+    while x > 0:
+        x = x - 1
+    else:
+        x = x + 100
+    return x
+"""
+        x = z3.Int("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator({"x": int})
+        result = t.translate(func_ast, {"x": x})
+        assert any("else clause ignored" in w for w in result.warnings)
+
+    def test_while_early_return(self) -> None:
+        """Lines 496-501: early return inside while body."""
+        src = """
+def f(x):
+    while x > 0:
+        return x
+    return 0
+"""
+        x = z3.Int("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator({"x": int})
+        result = t.translate(func_ast, {"x": x})
+        assert any("Early return inside while" in w for w in result.warnings)
+
+    def test_while_static_false_exits_immediately(self) -> None:
+        """Lines 488-490: while False breaks immediately."""
+        src = """
+def f(x):
+    while False:
+        x = x + 1
+    return x
+"""
+        x = z3.Int("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator({"x": int})
+        result = t.translate(func_ast, {"x": x})
+        assert result.return_expr is not None
+        assert len(result.warnings) == 0  # No max-unroll warning
+
+
+# =============================================================================
+# translator.py — match/case branches
+# =============================================================================
+
+
+class TestMatchCaseBranches:
+    """Cover match/case pattern types."""
+
+    @pytest.mark.skipif(sys.version_info < (3, 10), reason="match/case requires 3.10+")
+    def test_match_singleton_pattern(self) -> None:
+        """MatchSingleton: case True/False/None."""
+        src = """
+def f(x):
+    match x:
+        case True:
+            return 1
+        case False:
+            return 0
+        case _:
+            return -1
+"""
+        x = z3.Bool("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator({"x": bool})
+        result = t.translate(func_ast, {"x": x})
+        assert result.return_expr is not None
+
+    @pytest.mark.skipif(sys.version_info < (3, 10), reason="match/case requires 3.10+")
+    def test_match_with_guard(self) -> None:
+        """Match case with guard clause: case X if cond."""
+        src = """
+def f(x):
+    match x:
+        case 1 if x > 0:
+            return 10
+        case _:
+            return 0
+"""
+        x = z3.Int("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator({"x": int})
+        result = t.translate(func_ast, {"x": x})
+        assert result.return_expr is not None
+
+    @pytest.mark.skipif(sys.version_info < (3, 10), reason="match/case requires 3.10+")
+    def test_match_unsupported_pattern_raises(self) -> None:
+        """Unsupported pattern type (e.g., MatchSequence) raises."""
+        src = """
+def f(x):
+    match x:
+        case [1, 2]:
+            return 1
+        case _:
+            return 0
+"""
+        x = z3.Int("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator({"x": int})
+        with pytest.raises(TranslationError, match="Unsupported match pattern"):
+            t.translate(func_ast, {"x": x})
+
+
+# =============================================================================
+# translator.py — tuple and subscript edge cases
+# =============================================================================
+
+
+class TestTupleSubscriptEdgeCases:
+    """Cover empty tuple, multi-element tuple, subscript on tuple."""
+
+    def test_empty_tuple(self) -> None:
+        """Line 845-846: empty tuple returns IntVal(0)."""
+        src = """
+def f(x):
+    return ()
+"""
+        x = z3.Real("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator()
+        result = t.translate(func_ast, {"x": x})
+        assert result.return_expr is not None
+
+    def test_three_element_tuple(self) -> None:
+        """Lines 850-862: multi-element tuple creates accessors."""
+        src = """
+def f(x):
+    return (x, x + 1, x + 2)
+"""
+        x = z3.Real("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator()
+        result = t.translate(func_ast, {"x": x})
+        assert result.return_expr is not None
+        # Should have 3 accessor constraints
+        assert len(result.constraints) >= 3
+
+    def test_tuple_unpack_non_name_target_raises(self) -> None:
+        """Tuple unpacking with non-Name target raises."""
+        src = """
+def f(x):
+    a[0], b = (x, x)
+    return a
+"""
+        x = z3.Real("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator()
+        with pytest.raises(TranslationError, match="Unsupported unpack target"):
+            t.translate(func_ast, {"x": x})
+
+
+# =============================================================================
+# translator.py — builtin edge cases
+# =============================================================================
+
+
+class TestBuiltinEdgeCases:
+    """Cover new builtin branches."""
+
+    def test_pow_exponent_0_real(self) -> None:
+        """_pow with exponent 0 on Real base returns RealVal 1."""
+        t = Translator()
+        base = z3.Real("x")
+        exp = z3.IntVal(0)
+        result = t._pow(base, exp)
+        assert result.sort() == z3.RealSort()
+
+    def test_pow_exponent_0_int(self) -> None:
+        """_pow with exponent 0 on Int base returns IntVal 1."""
+        t = Translator()
+        base = z3.Int("x")
+        exp = z3.IntVal(0)
+        result = t._pow(base, exp)
+        assert result.sort() == z3.IntSort()
+
+    def test_pow_exponent_3(self) -> None:
+        """_pow with exponent 3."""
+        t = Translator()
+        base = z3.Real("x")
+        exp = z3.IntVal(3)
+        result = t._pow(base, exp)
+        assert result is not None
+
+    def test_pow_real_integer_exponent(self) -> None:
+        """_pow with RealVal that's actually integer (e.g., 2.0)."""
+        t = Translator()
+        base = z3.Real("x")
+        exp = z3.RealVal("2")
+        result = t._pow(base, exp)
+        assert result is not None  # Should work (2.0 is integer)
+
+    def test_pow_real_noninteger_raises(self) -> None:
+        """_pow with truly non-integer exponent raises."""
+        t = Translator()
+        base = z3.Real("x")
+        exp = z3.RealVal("2.5")
+        with pytest.raises(TranslationError):
+            t._pow(base, exp)
+
+    def test_bool_cast_on_bool(self) -> None:
+        """bool(True) returns BoolVal."""
+        result = _z3_bool_cast(z3.BoolVal(True))
+        assert result.sort() == z3.BoolSort()
+
+    def test_bool_cast_on_int(self) -> None:
+        """bool(0) returns False-equivalent."""
+        result = _z3_bool_cast(z3.IntVal(0))
+        assert result.sort() == z3.BoolSort()
+
+    def test_int_cast_on_int(self) -> None:
+        """int(x) where x is already int returns x."""
+        x = z3.Int("x")
+        result = _z3_int_cast(x)
+        assert result is x
+
+    def test_int_cast_on_real(self) -> None:
+        """int(x) where x is real returns ToInt(x)."""
+        x = z3.Real("x")
+        result = _z3_int_cast(x)
+        assert result.sort() == z3.IntSort()
+
+    def test_int_cast_on_bool(self) -> None:
+        """int(True) returns If(True, 1, 0)."""
+        x = z3.BoolVal(True)
+        result = _z3_int_cast(x)
+        assert result.sort() == z3.IntSort()
+
+    def test_float_cast_on_real(self) -> None:
+        """float(x) where x is already real returns x."""
+        x = z3.Real("x")
+        result = _z3_float_cast(x)
+        assert result is x
+
+    def test_float_cast_on_int(self) -> None:
+        """float(x) where x is int returns ToReal(x)."""
+        x = z3.Int("x")
+        result = _z3_float_cast(x)
+        assert result.sort() == z3.RealSort()
+
+    def test_float_cast_on_bool(self) -> None:
+        """float(True) returns If(True, 1.0, 0.0)."""
+        x = z3.BoolVal(True)
+        result = _z3_float_cast(x)
+        assert result.sort() == z3.RealSort()
+
+    def test_len_wrong_arity_raises(self) -> None:
+        """len() with wrong number of args."""
+        src = """
+def f(x, y):
+    return len(x, y)
+"""
+        x = z3.Int("x")
+        y = z3.Int("y")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator()
+        with pytest.raises(TranslationError, match="len.*1 argument"):
+            t.translate(func_ast, {"x": x, "y": y})
+
+
+# =============================================================================
+# translator.py — walrus operator edge cases
+# =============================================================================
+
+
+class TestWalrusEdgeCases:
+    """Cover walrus operator assignment into env."""
+
+    def test_walrus_updates_env(self) -> None:
+        """NamedExpr updates the environment."""
+        src = """
+def f(x):
+    y = (z := x + 1)
+    return y + z
+"""
+        x = z3.Real("x")
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        t = Translator()
+        result = t.translate(func_ast, {"x": x})
+        assert result.return_expr is not None
+        assert "z" in result.env
+
+
+# =============================================================================
+# lean4.py — coverage expansion
+# =============================================================================
+
+
+class TestLean4Coverage:
+    """Cover lean4.py uncovered branches."""
+
+    def test_expr_to_lean_bool_constant(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.Constant(value=True)
+        assert _expr_to_lean(node) == "true"
+        node = ast.Constant(value=False)
+        assert _expr_to_lean(node) == "false"
+
+    def test_expr_to_lean_binop(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.BinOp(
+            left=ast.Name(id="x"),
+            op=ast.Add(),
+            right=ast.Constant(value=1),
+        )
+        result = _expr_to_lean(node)
+        assert "+" in result
+
+    def test_expr_to_lean_unaryop(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.UnaryOp(op=ast.USub(), operand=ast.Name(id="x"))
+        result = _expr_to_lean(node)
+        assert "-" in result
+
+    def test_expr_to_lean_compare_chain(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.Compare(
+            left=ast.Name(id="a"),
+            ops=[ast.Lt(), ast.Lt()],
+            comparators=[ast.Name(id="b"), ast.Name(id="c")],
+        )
+        result = _expr_to_lean(node)
+        assert "<" in result
+        assert "∧" in result
+
+    def test_expr_to_lean_boolop(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.BoolOp(
+            op=ast.Or(),
+            values=[ast.Name(id="a"), ast.Name(id="b")],
+        )
+        result = _expr_to_lean(node)
+        assert "∨" in result
+
+    def test_expr_to_lean_ifexp(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.IfExp(
+            test=ast.Name(id="c"),
+            body=ast.Name(id="a"),
+            orelse=ast.Name(id="b"),
+        )
+        result = _expr_to_lean(node)
+        assert "if" in result
+        assert "then" in result
+
+    def test_expr_to_lean_call_abs(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.Call(
+            func=ast.Name(id="abs"),
+            args=[ast.Name(id="x")],
+            keywords=[],
+        )
+        result = _expr_to_lean(node)
+        assert "|" in result or "abs" in result
+
+    def test_expr_to_lean_unsupported(self) -> None:
+        from provably.lean4 import _expr_to_lean
+
+        node = ast.ListComp(elt=ast.Name(id="x"), generators=[])
+        with pytest.raises(ValueError, match="Unsupported Lean4 expression"):
+            _expr_to_lean(node)
+
+    def test_if_to_lean_elif_chain(self) -> None:
+        from provably.lean4 import _if_to_lean
+
+        src = """
+if x < 0:
+    return -1
+elif x > 0:
+    return 1
+else:
+    return 0
+"""
+        tree = ast.parse(textwrap.dedent(src))
+        if_stmt = tree.body[0]
+        result = _if_to_lean(if_stmt, {"x": "x"})
+        assert "if" in result
+        # Should NOT contain sorry (elif is handled)
+        assert "sorry" not in result
+
+    def test_if_to_lean_no_else(self) -> None:
+        from provably.lean4 import _if_to_lean
+
+        src = """
+if x < 0:
+    return -1
+"""
+        tree = ast.parse(textwrap.dedent(src))
+        if_stmt = tree.body[0]
+        with pytest.raises(ValueError, match="every control-flow path"):
+            _if_to_lean(if_stmt, {"x": "x"})
+
+    def test_func_body_augassign(self) -> None:
+        from provably.lean4 import _func_body_to_lean
+
+        src = """
+def f(x):
+    x += 1
+    return x
+"""
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        result = _func_body_to_lean(func_ast, {"x": "x"})
+        assert "let x" in result
+
+    def test_func_body_pass(self) -> None:
+        from provably.lean4 import _func_body_to_lean
+
+        src = """
+def f(x):
+    pass
+    return x
+"""
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        result = _func_body_to_lean(func_ast, {"x": "x"})
+        assert "x" in result
+
+    def test_func_body_docstring_skipped(self) -> None:
+        from provably.lean4 import _func_body_to_lean
+
+        src = '''
+def f(x):
+    """This is a docstring."""
+    return x
+'''
+        func_ast = ast.parse(textwrap.dedent(src)).body[0]
+        result = _func_body_to_lean(func_ast, {"x": "x"})
+        assert "docstring" not in result
+
+    def test_z3_str_to_lean_not_conversion(self) -> None:
+        from provably.lean4 import _z3_str_to_lean
+
+        result = _z3_str_to_lean("Not(x > 0)", ["x"])
+        assert "¬" in result
+
+    def test_check_lean4_proof_available(self) -> None:
+        from provably.lean4 import HAS_LEAN4, check_lean4_proof
+
+        if not HAS_LEAN4:
+            pytest.skip("Lean4 not installed")
+        # Simple Lean4 that should type-check
+        ok, output = check_lean4_proof("#check Nat")
+        # May or may not pass depending on imports, but shouldn't crash
+        assert isinstance(ok, bool)
+        assert isinstance(output, str)
+
+    def test_check_lean4_proof_syntax_error(self) -> None:
+        from provably.lean4 import HAS_LEAN4, check_lean4_proof
+
+        if not HAS_LEAN4:
+            pytest.skip("Lean4 not installed")
+        ok, output = check_lean4_proof("this is not valid lean code !!!")
+        assert not ok
+        assert len(output) > 0
+
+    def test_generate_theorem_not_function_def(self) -> None:
+        from provably.lean4 import generate_lean4_theorem
+
+        with pytest.raises(ValueError, match="not a function definition"):
+            generate_lean4_theorem(
+                func_name="test",
+                param_names=[],
+                param_types={},
+                pre_str=None,
+                post_str=None,
+                source="x = 42",
+            )
+
+
+# =============================================================================
+# types.py — coverage expansion
+# =============================================================================
+
+
+class TestTypesModuleCoverage:
+    """Cover types.py marker classes and edge cases."""
+
+    def test_gt_init_and_repr(self) -> None:
+        from provably.types import Gt
+
+        g = Gt(5)
+        assert g.bound == 5
+        assert repr(g) == "Gt(5)"
+
+    def test_ge_init_and_repr(self) -> None:
+        from provably.types import Ge
+
+        g = Ge(0)
+        assert g.bound == 0
+        assert repr(g) == "Ge(0)"
+
+    def test_lt_init_and_repr(self) -> None:
+        from provably.types import Lt
+
+        lt = Lt(10)
+        assert lt.bound == 10
+        assert repr(lt) == "Lt(10)"
+
+    def test_le_init_and_repr(self) -> None:
+        from provably.types import Le
+
+        le = Le(100)
+        assert le.bound == 100
+        assert repr(le) == "Le(100)"
+
+    def test_between_init_and_repr(self) -> None:
+        from provably.types import Between
+
+        b = Between(0, 1)
+        assert b.lo == 0
+        assert b.hi == 1
+        assert repr(b) == "Between(0, 1)"
+
+    def test_noteq_init_and_repr(self) -> None:
+        from provably.types import NotEq
+
+        n = NotEq(42)
+        assert n.val == 42
+        assert repr(n) == "NotEq(42)"
+
+    def test_python_type_to_z3_sort_annotated(self) -> None:
+        from typing import Annotated
+
+        from provably.types import Gt, python_type_to_z3_sort
+
+        assert python_type_to_z3_sort(Annotated[float, Gt(0)]) == z3.RealSort()
+
+    def test_make_z3_var_int(self) -> None:
+        from provably.types import make_z3_var
+
+        v = make_z3_var("x", int)
+        assert v.sort() == z3.IntSort()
+
+    def test_extract_refinements_gt(self) -> None:
+        from typing import Annotated
+
+        from provably.types import Gt, extract_refinements
+
+        x = z3.Real("x")
+        constraints = extract_refinements(Annotated[float, Gt(0)], x)
+        assert len(constraints) >= 1
+
+    def test_extract_refinements_between(self) -> None:
+        from typing import Annotated
+
+        from provably.types import Between, extract_refinements
+
+        x = z3.Real("x")
+        constraints = extract_refinements(Annotated[float, Between(0, 1)], x)
+        assert len(constraints) >= 2
+
+    def test_extract_refinements_noteq(self) -> None:
+        from typing import Annotated
+
+        from provably.types import NotEq, extract_refinements
+
+        x = z3.Int("x")
+        constraints = extract_refinements(Annotated[int, NotEq(0)], x)
+        assert len(constraints) >= 1
+
+    def test_extract_refinements_bare_type(self) -> None:
+        from provably.types import extract_refinements
+
+        x = z3.Real("x")
+        constraints = extract_refinements(float, x)
+        assert len(constraints) == 0
+
+
+# =============================================================================
+# hypothesis.py — coverage expansion
+# =============================================================================
+
+
+class TestHypothesisCoverage:
+    """Cover hypothesis.py uncovered paths."""
+
+    def test_hypothesis_check_basic(self) -> None:
+        from provably.hypothesis import hypothesis_check
+
+        def double(x: float) -> float:
+            return x * 2
+
+        result = hypothesis_check(double, pre=lambda x: x >= 0, post=lambda x, result: result >= 0)
+        assert result is not None
+        assert hasattr(result, "passed")
+
+    def test_hypothesis_check_failing(self) -> None:
+        from provably.hypothesis import hypothesis_check
+
+        def bad(x: float) -> float:
+            return x - 1
+
+        result = hypothesis_check(bad, pre=lambda x: x >= 0, post=lambda x, result: result >= 0)
+        assert result is not None
+
+    def test_from_refinements_positive(self) -> None:
+        from provably.hypothesis import from_refinements
+        from provably.types import Positive
+
+        strat = from_refinements(Positive)
+        assert strat is not None
+
+    def test_from_refinements_unit_interval(self) -> None:
+        from provably.hypothesis import from_refinements
+        from provably.types import UnitInterval
+
+        strat = from_refinements(UnitInterval)
+        assert strat is not None
+
+    def test_proven_property_decorator(self) -> None:
+        from provably.hypothesis import proven_property
+
+        @proven_property(
+            pre=lambda x: x >= 0,
+            post=lambda x, result: result >= 0,
+        )
+        def triple(x: float) -> float:
+            return x * 3
+
+        assert hasattr(triple, "__proof__")
+        assert triple.__proof__.verified
+
+
+# =============================================================================
+# engine.py — coverage expansion
+# =============================================================================
+
+
+class TestEngineCoverage:
+    """Cover engine.py edge cases."""
+
+    def test_verify_function_no_return(self) -> None:
+        """Function with no return on all paths."""
+
+        def no_return(x: float) -> float:
+            y = x + 1
+
+        cert = verify_function(no_return, post=lambda x, result: result >= 0)
+        assert cert.status.value in ("translation_error", "skipped")
+
+    def test_verify_function_post_exception(self) -> None:
+        """Post lambda that raises."""
+
+        def good(x: float) -> float:
+            return x
+
+        def bad_post(x, result):
+            raise ValueError("broken post")
+
+        cert = verify_function(good, post=bad_post)
+        assert cert.status.value == "translation_error"
+
+    def test_verify_function_pre_exception(self) -> None:
+        """Pre lambda that raises."""
+
+        def good(x: float) -> float:
+            return x
+
+        def bad_pre(x):
+            raise ValueError("broken pre")
+
+        cert = verify_function(good, pre=bad_pre, post=lambda x, r: r == x)
+        assert cert.status.value == "translation_error"
+
+    def test_certificate_explain_verified(self) -> None:
+        """Test explain() on a verified certificate."""
+
+        def identity(x: float) -> float:
+            return x
+
+        cert = verify_function(identity, post=lambda x, r: r == x)
+        explanation = cert.explain()
+        assert "Q.E.D." in explanation
+
+    def test_certificate_to_prompt_verified(self) -> None:
+        """Test to_prompt() on verified cert."""
+
+        def identity(x: float) -> float:
+            return x
+
+        cert = verify_function(identity, post=lambda x, r: r == x)
+        prompt = cert.to_prompt()
+        assert "verified" in prompt.lower() or "Q.E.D" in prompt
+
+    def test_certificate_from_json_round_trip(self) -> None:
+        """Test to_json/from_json round trip."""
+        from provably.engine import ProofCertificate
+
+        def identity(x: float) -> float:
+            return x
+
+        cert = verify_function(identity, post=lambda x, r: r == x)
+        data = cert.to_json()
+        restored = ProofCertificate.from_json(data)
+        assert restored.function_name == cert.function_name
+        assert restored.status == cert.status
+
+    def test_certificate_str_verified(self) -> None:
+        """Test __str__ on verified cert."""
+
+        def identity(x: float) -> float:
+            return x
+
+        cert = verify_function(identity, post=lambda x, r: r == x)
+        s = str(cert)
+        assert "Q.E.D." in s
+        assert "identity" in s
+
+    def test_certificate_str_counterexample(self) -> None:
+        """Test __str__ on counterexample cert."""
+
+        def bad(x: float) -> float:
+            return x
+
+        cert = verify_function(bad, post=lambda x, r: r > x)
+        s = str(cert)
+        assert "DISPROVED" in s
+
+    def test_explain_counterexample(self) -> None:
+        """Test explain() on counterexample."""
+
+        def bad(x: float) -> float:
+            return x
+
+        cert = verify_function(bad, post=lambda x, r: r > x)
+        explanation = cert.explain()
+        assert "Counterexample" in explanation
+        assert "Postcondition" in explanation
+
+    def test_to_prompt_counterexample(self) -> None:
+        """Test to_prompt() on counterexample."""
+
+        def bad(x: float) -> float:
+            return x
+
+        cert = verify_function(bad, post=lambda x, r: r > x)
+        prompt = cert.to_prompt()
+        assert "DISPROVED" in prompt or "counterexample" in prompt.lower()
+
+    def test_verify_module(self) -> None:
+        """Test verify_module on _self_proof."""
+        import provably._self_proof as sp
+        from provably import verify_module
+
+        results = verify_module(sp)
+        assert len(results) >= 10  # At least original 10
+
+    def test_configure_log_level(self) -> None:
+        """Test configure with log_level."""
+        from provably import configure
+
+        configure(log_level="DEBUG")
+        configure(log_level="WARNING")  # Reset
+
+    def test_configure_unknown_key_raises(self) -> None:
+        """Test configure with unknown key."""
+        from provably import configure
+
+        with pytest.raises(ValueError, match="Unknown"):
+            configure(nonexistent_key=True)
+
+    def test_clear_cache(self) -> None:
+        """Test clear_cache."""
+        from provably import clear_cache
+
+        clear_cache()  # Should not raise
+
+
+# =============================================================================
+# decorators.py — coverage expansion
+# =============================================================================
+
+
+class TestDecoratorsCoverage:
+    """Cover decorators.py edge cases."""
+
+    def test_runtime_checked_pre_violation(self) -> None:
+        from provably import runtime_checked
+
+        @runtime_checked(pre=lambda x: x > 0, raise_on_failure=True)
+        def positive_only(x: float) -> float:
+            return x
+
+        with pytest.raises(Exception):  # noqa: B017
+            positive_only(-1)
+
+    def test_runtime_checked_post_violation(self) -> None:
+        from provably import ContractViolationError, runtime_checked
+
+        @runtime_checked(post=lambda x, result: result > 0, raise_on_failure=True)
+        def returns_negative(x: float) -> float:
+            return -x
+
+        with pytest.raises(ContractViolationError):
+            returns_negative(5)
+
+    def test_verified_check_contracts_runtime(self) -> None:
+        from provably import verified
+
+        @verified(
+            pre=lambda x: x >= 0,
+            post=lambda x, r: r >= 0,
+            check_contracts=True,
+        )
+        def safe_double(x: float) -> float:
+            return x * 2
+
+        assert safe_double(5) == 10
+        assert safe_double.__proof__.verified
+
+    def test_contract_violation_error_fields(self) -> None:
+        from provably import ContractViolationError
+
+        err = ContractViolationError("pre", "test_fn", (1, 2), None)
+        assert err.kind == "pre"
+        assert err.func_name == "test_fn"
+
+    def test_verification_error_certificate(self) -> None:
+        from provably import VerificationError
+        from provably.engine import ProofCertificate, Status
+
+        cert = ProofCertificate(
+            function_name="test",
+            source_hash="abc",
+            status=Status.COUNTEREXAMPLE,
+            preconditions=(),
+            postconditions=("result > 0",),
+            counterexample={"x": -1},
+        )
+        err = VerificationError(cert)
+        assert err.certificate is cert
+
+
+# ===========================================================================
+# PART III — @runtime_checked decorator coverage (orig. test_runtime_checked.py)
+# ===========================================================================
+# Full coverage of @runtime_checked decorator.
+
+# ---------------------------------------------------------------------------
+# Pre-condition violation
+# ---------------------------------------------------------------------------
+
+
+class TestPreConditionViolation:
+    def test_pre_violation_raises(self) -> None:
+        @runtime_checked(pre=lambda x: x >= 0)
+        def sqrt_floor(x: float) -> float:
+            return x**0.5
+
+        with pytest.raises(ContractViolationError) as exc_info:
+            sqrt_floor(-1.0)
+
+        err = exc_info.value
+        assert err.kind == "pre"
+        assert err.func_name == "sqrt_floor"
+        assert err.args_ == (-1.0,)
+
+    def test_pre_violation_error_attributes(self) -> None:
+        @runtime_checked(pre=lambda x: x > 0, raise_on_failure=True)
+        def positive_only(x: float) -> float:
+            return x
+
+        with pytest.raises(ContractViolationError) as exc_info:
+            positive_only(0.0)
+
+        err = exc_info.value
+        assert err.kind == "pre"
+        assert err.result is None  # not set for pre violations
+
+    def test_pre_with_multiple_args(self) -> None:
+        @runtime_checked(pre=lambda a, b: a < b)
+        def ordered_sum(a: float, b: float) -> float:
+            return a + b
+
+        # pre passes
+        assert ordered_sum(1.0, 2.0) == 3.0
+
+        # pre fails
+        with pytest.raises(ContractViolationError) as exc_info:
+            ordered_sum(5.0, 3.0)
+
+        err = exc_info.value
+        assert err.kind == "pre"
+        assert err.args_ == (5.0, 3.0)
+
+    def test_exception_in_pre_treated_as_failure(self) -> None:
+        def bad_pre(x: float) -> bool:
+            raise ValueError("pre exploded")
+
+        @runtime_checked(pre=bad_pre, raise_on_failure=True)
+        def f(x: float) -> float:
+            return x
+
+        # Exception in pre is caught and treated as False
+        with pytest.raises(ContractViolationError):
+            f(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Post-condition violation
+# ---------------------------------------------------------------------------
+
+
+class TestPostConditionViolation:
+    def test_post_violation_raises(self) -> None:
+        @runtime_checked(post=lambda x, result: result >= 0)
+        def broken_abs(x: float) -> float:
+            return x  # wrong — doesn't negate
+
+        with pytest.raises(ContractViolationError) as exc_info:
+            broken_abs(-5.0)
+
+        err = exc_info.value
+        assert err.kind == "post"
+        assert err.func_name == "broken_abs"
+        assert err.result == -5.0
+
+    def test_post_receives_return_value(self) -> None:
+        captured = {}
+
+        def capture_post(x: float, result: float) -> bool:
+            captured["x"] = x
+            captured["result"] = result
+            return result >= 0
+
+        @runtime_checked(post=capture_post)
+        def double(x: float) -> float:
+            return x * 2
+
+        double(3.0)
+        assert captured["x"] == 3.0
+        assert captured["result"] == 6.0
+
+    def test_exception_in_post_treated_as_failure(self) -> None:
+        def bad_post(x: float, result: float) -> bool:
+            raise RuntimeError("post exploded")
+
+        @runtime_checked(post=bad_post, raise_on_failure=True)
+        def f(x: float) -> float:
+            return x
+
+        with pytest.raises(ContractViolationError):
+            f(1.0)
+
+    def test_post_violation_error_has_result(self) -> None:
+        @runtime_checked(post=lambda x, result: result > 100)
+        def f(x: float) -> float:
+            return x
+
+        with pytest.raises(ContractViolationError) as exc_info:
+            f(5.0)
+
+        assert exc_info.value.result == 5.0
+        assert exc_info.value.kind == "post"
+
+
+# ---------------------------------------------------------------------------
+# Both pass
+# ---------------------------------------------------------------------------
+
+
+class TestBothPass:
+    def test_both_pass(self) -> None:
+        @runtime_checked(
+            pre=lambda x: x >= 0,
+            post=lambda x, result: result >= x,
+        )
+        def double(x: float) -> float:
+            return x * 2
+
+        result = double(3.0)
+        assert result == 6.0
+
+    def test_no_contracts_passthrough(self) -> None:
+        @runtime_checked()
+        def f(x: float) -> float:
+            return x * 3
+
+        assert f(4.0) == 12.0
+
+    def test_bare_decorator(self) -> None:
+        @runtime_checked
+        def g(x: float) -> float:
+            return x + 1
+
+        assert g(5.0) == 6.0
+
+
+# ---------------------------------------------------------------------------
+# raise_on_failure=False — should log, not raise
+# ---------------------------------------------------------------------------
+
+
+class TestRaiseOnFailureFalse:
+    def test_raise_on_failure_false_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+        @runtime_checked(pre=lambda x: x >= 0, raise_on_failure=False)
+        def f(x: float) -> float:
+            return x
+
+        with caplog.at_level(logging.WARNING, logger="provably"):
+            result = f(-1.0)  # pre fails, but should not raise
+
+        # Function still returns (pre violation logged, not raised)
+        assert result == -1.0
+        assert any("Contract violation" in r.message for r in caplog.records)
+
+    def test_raise_on_failure_false_post_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+        @runtime_checked(post=lambda x, result: result > 0, raise_on_failure=False)
+        def f(x: float) -> float:
+            return -x  # will violate post for positive x
+
+        with caplog.at_level(logging.WARNING, logger="provably"):
+            result = f(5.0)  # post returns -5 < 0, violation logged not raised
+
+        assert result == -5.0
+        assert any("Contract violation" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# ContractViolationError attributes and str
+# ---------------------------------------------------------------------------
+
+
+class TestContractViolationError:
+    def test_contract_violation_error_attributes(self) -> None:
+        err = ContractViolationError("pre", "my_func", (1, 2, 3))
+        assert err.kind == "pre"
+        assert err.func_name == "my_func"
+        assert err.args_ == (1, 2, 3)
+        assert err.result is None
+
+    def test_contract_violation_error_post_attributes(self) -> None:
+        err = ContractViolationError("post", "my_func", (1,), result=42)
+        assert err.kind == "post"
+        assert err.result == 42
+
+    def test_contract_violation_error_str_pre(self) -> None:
+        err = ContractViolationError("pre", "my_func", (5,))
+        msg = str(err)
+        assert "Precondition" in msg
+        assert "my_func" in msg
+        assert "5" in msg
+
+    def test_contract_violation_error_str_post(self) -> None:
+        err = ContractViolationError("post", "my_func", (5,), result=99)
+        msg = str(err)
+        assert "Postcondition" in msg
+        assert "my_func" in msg
+        assert "99" in msg
+
+
+# ---------------------------------------------------------------------------
+# Function metadata preservation
+# ---------------------------------------------------------------------------
+
+
+class TestFunctionMetadata:
+    def test_preserves_function_name_and_doc(self) -> None:
+        @runtime_checked(pre=lambda x: x > 0)
+        def my_documented_function(x: float) -> float:
+            """My documented function."""
+            return x * 2
+
+        assert my_documented_function.__name__ == "my_documented_function"
+        assert my_documented_function.__doc__ == "My documented function."
+
+
+# ---------------------------------------------------------------------------
+# Async functions
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncRuntimeChecked:
+    def test_runtime_checked_on_async_function(self) -> None:
+        @runtime_checked(
+            pre=lambda x: x >= 0,
+            post=lambda x, result: result >= x,
+        )
+        async def async_double(x: float) -> float:
+            return x * 2
+
+        result = asyncio.run(async_double(3.0))
+        assert result == 6.0
+
+    def test_async_pre_violation_raises(self) -> None:
+        @runtime_checked(pre=lambda x: x >= 0, raise_on_failure=True)
+        async def async_fn(x: float) -> float:
+            return x
+
+        async def run():
+            return await async_fn(-1.0)
+
+        with pytest.raises(ContractViolationError):
+            asyncio.run(run())
+
+    def test_async_post_violation_raises(self) -> None:
+        @runtime_checked(post=lambda x, result: result > 0, raise_on_failure=True)
+        async def async_fn(x: float) -> float:
+            return -x  # violates post for positive x
+
+        async def run():
+            return await async_fn(5.0)
+
+        with pytest.raises(ContractViolationError):
+            asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# @verified with check_contracts=True
+# ---------------------------------------------------------------------------
+
+
+class TestVerifiedWithCheckContracts:
+    def test_check_contracts_on_verified(self) -> None:
+        """@verified(check_contracts=True) adds runtime checking on top of static proof."""
+        from conftest import requires_z3
+
+        pytest.importorskip("z3")
+
+        from provably.decorators import verified
+
+        @verified(
+            pre=lambda x: x >= 0,
+            post=lambda x, result: result >= 0,
+            check_contracts=True,
+        )
+        def nonneg_double(x: float) -> float:
+            return x * 2
+
+        # Correct call works
+        assert nonneg_double(3.0) == 6.0
+
+        # Pre violation raises at runtime
+        with pytest.raises(ContractViolationError):
+            nonneg_double(-1.0)
+
+    def test_stacking_verified_and_runtime_checked(self) -> None:
+        """Stack @runtime_checked on top of @verified for extra defence-in-depth."""
+        pytest.importorskip("z3")
+
+        from provably.decorators import verified
+
+        @runtime_checked(
+            pre=lambda x: x >= 0,
+            post=lambda x, result: result >= 0,
+        )
+        @verified(post=lambda x, result: result >= 0)
+        def double_guarded(x: float) -> float:
+            return x * 2
+
+        assert double_guarded(4.0) == 8.0
+
+        with pytest.raises(ContractViolationError):
+            double_guarded(-1.0)
