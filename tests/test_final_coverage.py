@@ -939,6 +939,7 @@ class TestDecoratorsLines119_120_CheckArityException:
 
         # Patch inspect.signature to raise
         import inspect
+        import warnings
 
         original_sig = inspect.signature
 
@@ -952,8 +953,15 @@ class TestDecoratorsLines119_120_CheckArityException:
         original = dec_mod.inspect.signature
         dec_mod.inspect.signature = raise_on_fn  # type: ignore[attr-defined]
         try:
-            # Should not raise
-            _check_contract_arity(fn, 1, "pre", "test_fn")
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                # Should not raise
+                _check_contract_arity(fn, 1, "pre", "test_fn")
+            # Uninspectable contract -> silent early return: no warning and
+            # no raised error. Without this comparator the body asserted
+            # nothing material — a spurious arity warning (planted-break
+            # proof, w1001rsi/provcov) still passed green.
+            assert len(w) == 0
         finally:
             dec_mod.inspect.signature = original
 
