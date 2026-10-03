@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import sys
 import types
-import unittest.mock as mock
 from pathlib import Path
 from typing import Annotated, Any
 from unittest.mock import MagicMock, patch
@@ -305,8 +304,6 @@ class TestDecoratorsExceptionClasses:
 
     def test_handle_violation_warn_path(self) -> None:
         """_handle_violation with raise_on_failure=False should warn."""
-        import logging
-
         from provably.decorators import ContractViolationError, _handle_violation
 
         exc = ContractViolationError("pre", "foo", (1,))
@@ -1213,7 +1210,6 @@ class TestPytestPluginPaths:
 
         pytest_terminal_summary(reporter, exitstatus=0, config=config)
         # Should have written the counterexample notes
-        all_text = " ".join(lines_written)
         assert any("bad_fn" in t for t in lines_written)
 
     def test_pytest_addoption_called(self) -> None:
@@ -1343,8 +1339,6 @@ class TestEngineNewFunctions:
 
     def test_safe_cell_repr_empty_cell(self) -> None:
         """Cover _safe_cell_repr ValueError branch (empty closure cell)."""
-        import ctypes
-
         from provably.engine import _safe_cell_repr
 
         # Create an empty cell by making a closure then clearing it
@@ -1408,7 +1402,7 @@ class TestEngineNewFunctions:
             # First call — populates both _proof_cache and _fast_cache
             cert1 = verify_function(fn_for_fast_cache, post=lambda x, r: r > x)
             # Clear only _proof_cache to force _fast_cache path
-            from provably.engine import _fast_cache, _proof_cache
+            from provably.engine import _proof_cache
 
             _proof_cache.clear()
             # Second call — should hit _fast_cache (skipping getsource)
@@ -1618,7 +1612,6 @@ class TestEngineGapsPhase2:
 
         from provably.engine import (
             _fast_cache,
-            _proof_cache,
             clear_cache,
             configure,
             verify_function,
@@ -1883,8 +1876,6 @@ class TestTranslatorSumGeneratorGaps:
         import ast
         import textwrap
 
-        import z3 as z3m
-
         from provably.translator import Translator
 
         src = textwrap.dedent("""
@@ -1902,8 +1893,6 @@ def f():
         import ast
         import textwrap
 
-        import z3 as z3m
-
         from provably.translator import Translator
 
         src = textwrap.dedent("""
@@ -1920,8 +1909,6 @@ def f():
         """Cover sum(... for i in range(0)) returning IntVal(0)."""
         import ast
         import textwrap
-
-        import z3 as z3m
 
         from provably.translator import Translator
 
@@ -1943,8 +1930,6 @@ class TestTranslatorFilterNoneGaps:
         """Cover filter(None) with concrete True bool (line 1332)."""
         import ast
         import textwrap
-
-        import z3 as z3m
 
         from provably.translator import Translator
 
@@ -2050,7 +2035,6 @@ class TestPytestPluginGaps:
     def test_collect_proof_certs_none_module_in_sys(self) -> None:
         """Cover line 164: sys.modules entry with None value."""
 
-        from provably.engine import ProofCertificate
         from provably.pytest_plugin import _collect_proof_certificates
 
         fake_config = MagicMock(spec=[])
@@ -2171,8 +2155,6 @@ class TestLean4ExportGaps:
 
     def test_export_with_refinement_constraints(self) -> None:
         """Cover line 694: refinement constraints appended in export_lean4."""
-        from typing import Annotated
-
         from provably.lean4 import export_lean4
         from provably.types import Ge
 
@@ -2240,7 +2222,6 @@ class TestTranslatorNegativeTupleSubscript:
         from provably.translator import Translator
 
         t = Translator({"x": int, "y": int})
-        x, y = z3m.Int("x"), z3m.Int("y")
 
         # Manually inject tuple_meta and call _subscript with idx=-1
         tuple_id = z3m.Int("__test_tuple_neg__")
@@ -2359,7 +2340,6 @@ class TestEngineCorruptDiskCache:
             # Save a valid cert
             _save_to_disk("corrupt_test_key", cert)
             # Now corrupt the file so from_json raises
-            import json
             from pathlib import Path
 
             cache_file = Path(tmpdir) / "corrupt_test_key.json"
@@ -2696,8 +2676,6 @@ def f(x: int) -> int:
         """Line 1022->1026: _resolve_int with non-Name/non-Constant -> raise."""
         import ast
 
-        import z3 as z3m
-
         from provably.translator import TranslationError, Translator
 
         t = Translator({"x": int})
@@ -2710,8 +2688,6 @@ def f(x: int) -> int:
     def test_resolve_int_name_not_in_closure_raises(self) -> None:
         """Line 1022 True, 1024 False: Name in closure_vars but cv is None -> raise."""
         import ast
-
-        import z3 as z3m
 
         from provably.translator import TranslationError, Translator
 

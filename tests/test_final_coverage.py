@@ -34,10 +34,9 @@ pytestmark = requires_z3
 
 import z3
 
-from provably import clear_cache, configure, verified, verify_function
+from provably import configure, verified, verify_function
 from provably.decorators import (
     ContractViolationError,
-    VerificationError,
     _check_contract_arity,
     runtime_checked,
 )
@@ -635,8 +634,6 @@ class TestEngineLine328_NotFunctionDef:
 class TestEngineLines340_341_EmptyCell:
     def test_resolve_closure_vars_empty_cell(self) -> None:
         """_resolve_closure_vars handles empty closure cells without crashing."""
-        import ctypes
-
         # Create a function with a closure cell, then clear it
         def make_closure():
             x = 42
@@ -1035,8 +1032,6 @@ class TestDecoratorsLine136_ArityMismatchWarning:
 class TestDecoratorsLines278_279_NParamsZero:
     def test_verified_on_uninspectable_function(self) -> None:
         """@verified on a callable where signature inspection fails gets n_params=0."""
-        import inspect
-
         import provably.decorators as dec_mod
 
         original = dec_mod.inspect.signature
@@ -1143,8 +1138,6 @@ class TestDecoratorsLine306_SkippedLogging:
 class TestDecoratorsLines420_421_RuntimeWrapNParams:
     def test_runtime_checked_on_uninspectable_function(self) -> None:
         """_runtime_wrap handles signature inspection failure gracefully."""
-        import inspect
-
         import provably.decorators as dec_mod
 
         original = dec_mod.inspect.signature
@@ -1286,7 +1279,7 @@ class TestTypesLines240_248_ExtractRefinements:
         """Nested Annotated types are recursively expanded."""
         from typing import Annotated
 
-        from provably.types import Ge, Positive
+        from provably.types import Positive
 
         x = z3.Real("x")
         # Positive = Annotated[float, Gt(0)] — use it as a marker inside Annotated
@@ -1378,16 +1371,6 @@ class TestTypesLines240_248_ExtractRefinements:
 class TestTranslatorLine247_NeitherBranchReturns:
     def test_if_else_neither_returns_hits_merge(self) -> None:
         """If/else where both branches assign (no return) → _merge_envs path."""
-        src = """
-def f(x):
-    if x > 0:
-        y = 1
-    else:
-        y = 2
-    return y
-"""
-        # This exercises _do_if where t_ret=None, f_ret=None, remaining=[return y]
-        # The remaining block has the return, so one of the branches runs remaining.
         # To hit line 247, we need BOTH t_ret and f_ret to be None even after
         # running remaining. That means remaining also returns None.
         # A standalone if/else with no remaining:
@@ -1979,7 +1962,6 @@ class TestTranslatorMergeEnvsPhiAndSingle:
 class TestEngineValidateArityInspectRaises:
     def test_validate_contract_arity_inspect_raises(self) -> None:
         """_validate_contract_arity returns None when inspect.signature raises."""
-        import inspect
         import unittest.mock as mock
 
         with mock.patch("provably.engine.inspect.signature", side_effect=ValueError("no sig")):
@@ -2003,7 +1985,6 @@ class TestEngineValidateArityInspectRaises:
 class TestEngineNotFunctionDef:
     def test_verify_function_source_is_class_gives_error(self) -> None:
         """When source parses to a class def, returns TRANSLATION_ERROR."""
-        import inspect as _inspect
         import textwrap as _tw
         import unittest.mock as mock
 
@@ -2082,11 +2063,8 @@ class TestEngineTranslationErrorLineAlreadyInMsg:
 class TestEngineEmptyClosureCell:
     def test_empty_closure_cell_is_skipped(self) -> None:
         """_resolve_closure_vars skips variables whose cell is empty (ValueError)."""
-        import types as _types
-
-        # Create an empty cell using ctypes or a nested function trick
-        # Python 3.8+: use __class_getitem__ trick or simply create a bare cell
-        # The easiest: create a cell via compile/exec
+        # Create an empty cell via the nested-function trick:
+        # compile/exec an outer() that deletes x before returning inner().
         code = compile(
             "def outer():\n"
             "    x = 1\n"
