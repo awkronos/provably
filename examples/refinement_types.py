@@ -30,7 +30,7 @@ def nonneg_double(x: Annotated[float, Ge(0)]) -> Annotated[float, Ge(0)]:
     return x * 2
 
 
-print(f"nonneg_double: {nonneg_double.__proof__}")
+print(f"nonneg_double: {nonneg_double.__proof__}")  # type: ignore[attr-defined]
 print(f"  nonneg_double(5) = {nonneg_double(5)}")
 print()
 
@@ -41,7 +41,7 @@ def bounded_scale(x: Annotated[float, Ge(0), Le(1)]) -> Annotated[float, Ge(0), 
     return x * 100
 
 
-print(f"bounded_scale: {bounded_scale.__proof__}")
+print(f"bounded_scale: {bounded_scale.__proof__}")  # type: ignore[attr-defined]
 print(f"  bounded_scale(0.5) = {bounded_scale(0.5)}")
 print()
 
@@ -62,7 +62,7 @@ def positive_ratio(
     return a + b
 
 
-print(f"positive_ratio: {positive_ratio.__proof__}")
+print(f"positive_ratio: {positive_ratio.__proof__}")  # type: ignore[attr-defined]
 print(f"  positive_ratio(3, 4) = {positive_ratio(3, 4)}")
 print()
 
@@ -82,7 +82,7 @@ def to_unit(
     return x / 10
 
 
-print(f"to_unit: {to_unit.__proof__}")
+print(f"to_unit: {to_unit.__proof__}")  # type: ignore[attr-defined]
 print(f"  to_unit(7.5) = {to_unit(7.5)}")
 print()
 
@@ -97,7 +97,7 @@ def lerp_unit(
     return a + (b - a) * t
 
 
-print(f"lerp_unit: {lerp_unit.__proof__}")
+print(f"lerp_unit: {lerp_unit.__proof__}")  # type: ignore[attr-defined]
 print(f"  lerp_unit(0.2, 0.8, 0.5) = {lerp_unit(0.2, 0.8, 0.5)}")
 print()
 
@@ -120,7 +120,7 @@ def safe_normalize(
     return x / divisor
 
 
-print(f"safe_normalize: {safe_normalize.__proof__}")
+print(f"safe_normalize: {safe_normalize.__proof__}")  # type: ignore[attr-defined]
 print(f"  safe_normalize(10.0, 4.0) = {safe_normalize(10.0, 4.0)}")
 print()
 
@@ -145,7 +145,7 @@ def clamp(val: float, lo: float, hi: float) -> float:
     return val
 
 
-print(f"clamp: {clamp.__proof__}")
+print(f"clamp: {clamp.__proof__}")  # type: ignore[attr-defined]
 print(f"  clamp(15, 0, 10) = {clamp(15, 0, 10)}")
 print(f"  clamp(-3, 0, 10) = {clamp(-3, 0, 10)}")
 print()
@@ -164,7 +164,7 @@ def wrong_abs(x: float) -> Annotated[float, Ge(0)]:
     return x  # BUG: should be abs(x)
 
 
-cert = wrong_abs.__proof__
+cert = wrong_abs.__proof__  # type: ignore[attr-defined]
 print(f"wrong_abs: {cert}")
 print(f"  Status: {cert.status.value}")
 if cert.counterexample:
@@ -189,8 +189,8 @@ try:
     def clip_unit(x: Annotated[float, UnitInterval]) -> Annotated[float, UnitInterval]:
         return x * 0.5
 
-    print(f"scale_positive (Positive): {scale_positive.__proof__}")
-    print(f"clip_unit (UnitInterval):  {clip_unit.__proof__}")
+    print(f"scale_positive (Positive): {scale_positive.__proof__}")  # type: ignore[attr-defined]
+    print(f"clip_unit (UnitInterval):  {clip_unit.__proof__}")  # type: ignore[attr-defined]
 
 except ImportError:
     print("Positive / NonNegative / UnitInterval aliases not yet in provably.types")
