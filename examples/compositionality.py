@@ -58,7 +58,7 @@ def complement(x: float) -> float:
 
 
 for fn in (safe_half, safe_max, complement):
-    cert = fn.__proof__
+    cert = fn.__proof__  # type: ignore[union-attr]
     sym = "Q.E.D." if cert.verified else f"FAIL({cert.status.value})"
     print(f"  {sym:8s}  {cert.function_name}")
 print()
@@ -70,7 +70,7 @@ print()
 
 print("=== 2. __contract__ attribute ===")
 
-c = safe_half.__contract__
+c = safe_half.__contract__  # type: ignore[attr-defined]
 print("safe_half.__contract__:")
 print(f"  verified: {c['verified']}")
 print(f"  pre:      {c['pre']}")
@@ -88,8 +88,8 @@ print()
 print("=== 3. Modular verification with contracts= ===")
 
 safe_half_contract = {
-    "pre": safe_half.__contract__["pre"],
-    "post": safe_half.__contract__["post"],
+    "pre": safe_half.__contract__["pre"],  # type: ignore[attr-defined]
+    "post": safe_half.__contract__["post"],  # type: ignore[attr-defined]
     "return_sort": z3.RealSort(),
 }
 
@@ -128,9 +128,9 @@ print("    post: result in [0, x]")
 print()
 
 proofs = {
-    "safe_half": safe_half.__proof__,
-    "safe_max": safe_max.__proof__,
-    "complement": complement.__proof__,
+    "safe_half": safe_half.__proof__,  # type: ignore[attr-defined]
+    "safe_max": safe_max.__proof__,  # type: ignore[attr-defined]
+    "complement": complement.__proof__,  # type: ignore[attr-defined]
 }
 for name, proof in proofs.items():
     status = "proven" if proof.verified else proof.status.value
@@ -148,7 +148,7 @@ print()
 print("=== 5. verify_module() pattern ===")
 
 
-def verify_module(namespace: dict) -> dict[str, bool]:
+def verify_module(namespace: dict) -> dict[str, bool]:  # type: ignore[type-arg]
     """Collect and report proof status for all @verified functions in namespace."""
     results: dict[str, bool] = {}
     for name, obj in namespace.items():
@@ -222,7 +222,7 @@ def percent_to_unit(
     return pct / 100
 
 
-print(f"unit_to_percent:  {unit_to_percent.__proof__}")
-print(f"percent_to_unit:  {percent_to_unit.__proof__}")
+print(f"unit_to_percent:  {unit_to_percent.__proof__}")  # type: ignore[attr-defined]
+print(f"percent_to_unit:  {percent_to_unit.__proof__}")  # type: ignore[attr-defined]
 print(f"  unit_to_percent(0.75) = {unit_to_percent(0.75)}")
 print(f"  percent_to_unit(75.0) = {percent_to_unit(75.0)}")
