@@ -506,24 +506,14 @@ class TestEngineDefLines:
 
         assert _contract_sig(None) == "none"
 
-    def test_contract_sig_empty_cell(self) -> None:
-        """Cover lines 320-321 — empty closure cell handling."""
-        # Create a function with an empty closure cell
-        # This requires some hackery because Python doesn't naturally create empty cells
-        # We can use a class cell pattern
-        import ctypes
-
-        from provably.engine import _contract_sig
-
-        # Make a lambda with a real closure first
-        x = 42
-        fn = lambda v: v > x
-        sig = _contract_sig(fn)
-        assert isinstance(sig, str)
-        assert len(sig) == 16
+    # RSI d05 (2026-10-03): test_contract_sig_empty_cell removed — despite its
+    # name it never created an empty cell (it hashed a lambda capturing x=42 and
+    # asserted isinstance/len, trivially true for ANY closure); the populated-
+    # cell path is owned by TestEngineNewFunctions.test_contract_sig_with_closure_nonempty
+    # and the genuine empty-cell arm by TestEngineClosureCellValueError below.
 
     def test_contract_sig_with_defaults(self) -> None:
-        """Cover line 323-324 — function with defaults."""
+        """Cover _contract_sig __defaults__ branch (engine.py 412-413)."""
         from provably.engine import _contract_sig
 
         def fn_with_default(x: int, y: int = 5) -> bool:
@@ -1526,7 +1516,7 @@ class TestEngineNewFunctions:
         assert key is not None
 
     def test_safe_cell_repr_empty_cell_via_types(self) -> None:
-        """Cover _safe_cell_repr lines 363-364 (ValueError on empty cell)."""
+        """Cover _safe_cell_repr lines 383-384 (ValueError on empty cell)."""
         import types
 
         from provably.engine import _safe_cell_repr
@@ -1612,7 +1602,7 @@ class TestEngineGapsPhase2:
     """Cover remaining engine.py behavioral gaps."""
 
     def test_contract_sig_with_defaults_branch(self) -> None:
-        """Cover _contract_sig fn.__defaults__ branch (lines 389-390)."""
+        """Cover _contract_sig fn.__defaults__ branch (engine.py 412-413)."""
         from provably.engine import _contract_sig
 
         def fn_with_default(x: float = 1.0) -> float:
@@ -2814,38 +2804,99 @@ def f(x: int) -> int:
 
 
 class TestEngineClosureCellValueError:
-    """Cover engine.py lines 389-390: empty closure cell ValueError in _contract_sig."""
+    """Cover engine.py lines 409-410: empty closure cell ValueError in _contract_sig.
+
+    RSI d05 rewrite (2026-10-03): the previous body was skip-laundered — two
+    ``pytest.skip`` escape hatches meant the claimed coverage could vanish
+    silently — and its only live-path assertions (``isinstance str`` /
+    ``len == 16``) were satisfiable by ANY 16-hex digest: mutating the
+    ``__empty_cell__`` marker in engine.py kept the old test green (verified:
+    base test passes with marker ``__rotated__``, rc=0).  The empty cell is
+    now built deterministically with ``types.CellType`` passed through
+    ``types.FunctionType``'s closure argument (the same primitive this file
+    uses for ``_safe_cell_repr``), the ValueError precondition is asserted —
+    not skipped — and the digest is pinned to the exact marker-bearing value.
+    """
 
     def test_closure_cell_valueerror(self) -> None:
-        """Lines 389-390: cell.cell_contents raises ValueError -> append __empty_cell__."""
+        """Lines 409-410: empty cell.cell_contents raises ValueError -> __empty_cell__."""
+        import hashlib
+        import types as _types
+
         from provably.engine import _contract_sig
 
-        # Create a function with an empty closure cell.
-        # Python cells that have never been assigned raise ValueError on cell_contents.
-        def make_empty_cell():
-            # x is referenced in closure but never assigned on any live path
-            if False:
-                x = 1  # noqa: F841
+        def holder(x: int):
+            def g() -> int:
+                return x
 
-            def inner():
-                return x  # noqa: F821
+            return g
 
-            return inner
+        template = holder(7)  # populated cell, co_freevars == ('x',)
+        assert template.__code__.co_freevars == ("x",)
+        assert template.__closure__ is not None and len(template.__closure__) == 1
 
-        inner = make_empty_cell()
-        # inner.__closure__ should have a cell for x that's empty
-        if inner.__closure__ and inner.__closure__[0]:
-            try:
-                inner.__closure__[0].cell_contents  # noqa: B018 - attribute access deliberate; raises ValueError on empty cell
-                # If this doesn't raise, the cell has a value — skip
-                pytest.skip("Cell is not empty on this platform")
-            except ValueError:
-                # Good — cell is empty, now call _contract_sig which reads closure cells
-                result = _contract_sig(inner)
-                assert isinstance(result, str)
-                assert len(result) == 16
-        else:
-            pytest.skip("No closure cells found")
+        # Deterministic empty cell: rebuild the SAME code object with a fresh,
+        # never-assigned cell in place of the populated one.
+        empty_fn = _types.FunctionType(
+            template.__code__,
+            template.__globals__,
+            template.__name__,
+            template.__defaults__,
+            (_types.CellType(),),
+        )
+        # Precondition is pinned, not laundered: the cell must be empty here.
+        with pytest.raises(ValueError):
+            empty_fn.__closure__[0].cell_contents  # noqa: B018 - deliberate precondition probe
+
+        sig = _contract_sig(empty_fn)
+        code = template.__code__
+        expected = hashlib.sha256(
+            "|".join([str(code.co_code), repr(code.co_consts), "__empty_cell__"]).encode()
+        ).hexdigest()[:16]
+        # Exact pin: kills wrong-marker, missing-marker, and cell-ignoring
+        # mutations that the old isinstance/len assertions survived.
+        assert sig == expected
+        # Populated vs empty cells must not collide.
+        assert sig != _contract_sig(template)
+
+
+class TestCoverageFileSkipLaunderingGuard:
+    """RSI d05 (2026-10-03): ratchet against skip-laundered coverage claims.
+
+    This file's empty-closure-cell coverage used to sit behind two
+    conditional ``pytest.skip`` escape hatches, so on any host where the
+    ``if False`` cell trick yielded a non-empty cell (or no cell at all) the
+    claimed engine.py:409-410 coverage silently vanished into a skip that CI
+    counts as green.  This guard parses THIS file's AST and forbids
+    ``pytest.skip`` inside the class that owns the empty-cell claim.
+    """
+
+    def test_empty_cell_class_has_no_skip_escape(self) -> None:
+        import ast
+
+        src = Path(__file__).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        cls = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "TestEngineClosureCellValueError"
+        )
+        skips = [
+            node
+            for fn in cls.body
+            if isinstance(fn, ast.FunctionDef)
+            for node in ast.walk(fn)
+            if isinstance(node, ast.Call)
+            and (
+                (isinstance(node.func, ast.Attribute) and node.func.attr == "skip")
+                or (isinstance(node.func, ast.Name) and node.func.id == "skip")
+            )
+        ]
+        assert not skips, (
+            f"TestEngineClosureCellValueError contains {len(skips)} pytest.skip escape "
+            "hatch(es) — engine.py:409-410 (empty-cell ValueError arm) must be covered "
+            "deterministically, never laundered behind a conditional skip"
+        )
 
 
 class TestEngineFastCacheHit:
