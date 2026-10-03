@@ -125,12 +125,21 @@ class TestVerifyWithLean4:
     """Test full Lean4 verification pipeline."""
 
     def test_lean4_availability(self) -> None:
-        """Check HAS_LEAN4 matches reality."""
+        """Pin the probe's invariants instead of only checking it doesn't crash.
+
+        ``HAS_LEAN4`` can only be True if PATH resolved an executable ``lean``
+        at import time (the probe invokes it by bare name, which is a PATH
+        search), and ``LEAN4_VERSION`` is non-empty exactly when the probe ran.
+        """
         import shutil
 
         lean_found = shutil.which("lean") is not None
-        # May differ if lean is in a non-PATH location, so just check it doesn't crash
         assert isinstance(HAS_LEAN4, bool)
+        if HAS_LEAN4:
+            assert lean_found
+            assert LEAN4_VERSION
+        else:
+            assert LEAN4_VERSION == ""
 
     @pytest.mark.skipif(not HAS_LEAN4, reason="Lean4 not installed")
     def test_verify_returns_certificate(self) -> None:
@@ -147,9 +156,17 @@ class TestVerifyWithLean4:
         # Lean4 may not prove this without Mathlib — UNKNOWN is acceptable
         assert "lean4" in cert.z3_version
 
-    def test_graceful_skip_without_lean4(self) -> None:
-        if HAS_LEAN4:
-            pytest.skip("Lean4 IS available")
+    def test_graceful_skip_without_lean4(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Exercise the no-lean fallback on every host, not only on lean-free ones.
+
+        ``verify_with_lean4`` reads the module-level ``HAS_LEAN4`` at call time,
+        so patching it (the pattern ``TestLean4FailClosed`` already uses) runs
+        the fallback deterministically. The old conditional skip meant the path
+        was never exercised on hosts with Lean installed — including this one.
+        """
+        from provably import lean4 as lean4_module
+
+        monkeypatch.setattr(lean4_module, "HAS_LEAN4", False)
 
         def double(x: float) -> float:
             return x * 2
@@ -491,3 +508,36 @@ class TestLean4FailClosed:
         )
         assert ok is False
         assert "Invalid Lean4 theorem name" in output
+
+
+class TestLean4ImportProbeGuard:
+    """A broken ``lean`` on PATH must degrade, not crash ``import provably``."""
+
+    def test_probe_permission_error_degrades_to_not_installed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for the f884a597 import crash (PermissionError escaped).
+
+        Reproduced outside pytest with PATH pointing only at a non-executable
+        ``lean``: ``import provably`` raised PermissionError and exited 1.
+        The module-level probe runs at import, so this test reloads the
+        module with a patched ``subprocess.run`` that raises the same error,
+        then reloads again with the real ``subprocess.run`` to restore state
+        for every test that runs after this one.
+        """
+        import importlib
+        import subprocess
+
+        from provably import lean4 as lean4_module
+
+        def raise_eacces(*args: object, **kwargs: object) -> None:
+            raise PermissionError(13, "Permission denied", "lean")
+
+        monkeypatch.setattr(subprocess, "run", raise_eacces)
+        try:
+            importlib.reload(lean4_module)
+            assert lean4_module.HAS_LEAN4 is False
+            assert lean4_module.LEAN4_VERSION == ""
+        finally:
+            monkeypatch.undo()
+            importlib.reload(lean4_module)

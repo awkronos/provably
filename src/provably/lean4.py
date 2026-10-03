@@ -46,7 +46,11 @@ try:  # pragma: no cover
     )
     HAS_LEAN4 = _lean_result.returncode == 0
     LEAN4_VERSION = _lean_result.stdout.strip().split("\n")[0] if HAS_LEAN4 else ""
-except (FileNotFoundError, subprocess.TimeoutExpired):
+except (OSError, subprocess.TimeoutExpired):
+    # OSError covers FileNotFoundError plus PermissionError / IsADirectoryError
+    # from a broken non-executable ``lean`` on PATH. Measured at f884a597: such
+    # a PATH entry raised out of this probe and crashed ``import provably``
+    # (the lean4 backend is imported from ``__init__``).
     HAS_LEAN4 = False
     LEAN4_VERSION = ""
 
