@@ -63,6 +63,29 @@ def _relative_links(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _who_answered_for_the_version() -> str:
+    """Name the interpreter and metadata record that produced the installed version.
+
+    Both version gates compare tree truth against ``importlib.metadata``, which
+    resolves along *this interpreter's* ``sys.path`` — so a red can be raised by
+    a stale distribution record in a completely different environment (a global
+    install, another venv) while the venv under test is perfectly current. The
+    U1004-PROVDOCS incident spent its triage doing exactly that misattribution;
+    these lines make the next occurrence self-diagnosing.
+    """
+    import sys
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        dist = distribution("provably")
+    except PackageNotFoundError:
+        record = "no installed provably distribution on sys.path"
+    else:
+        dist_path = getattr(dist, "_path", None)
+        record = f"metadata record {str(dist_path) if dist_path else '?'}"
+    return f"interpreter {sys.executable!r}; {record}"
+
+
 def test_dunder_version_is_derived_not_transcribed() -> None:
     """``provably.__version__`` must equal the manifest, however it is obtained.
 
@@ -74,7 +97,8 @@ def test_dunder_version_is_derived_not_transcribed() -> None:
     assert provably.__version__ == _manifest()["project"]["version"], (
         "provably.__version__ disagrees with pyproject.toml [project] version. "
         "pyproject.toml is the single definition; __version__ derives from it "
-        "via importlib.metadata."
+        f"via importlib.metadata. module: {provably.__file__!r}; "
+        f"{_who_answered_for_the_version()}"
     )
 
 
@@ -85,9 +109,14 @@ def test_installed_distribution_metadata_matches_manifest() -> None:
         installed = version("provably")
     except PackageNotFoundError:
         pytest.skip("provably is not installed in this environment")
-    assert installed == _manifest()["project"]["version"], (
-        "installed distribution metadata is stale relative to pyproject.toml; "
-        "reinstall the package (`uv sync`) so the derived __version__ is right"
+    declared = _manifest()["project"]["version"]
+    assert installed == declared, (
+        f"installed distribution metadata ({installed!r}) is stale relative to "
+        f"pyproject.toml ({declared!r}). {_who_answered_for_the_version()} — "
+        "reinstall in the interpreter that actually runs this suite (`uv sync` "
+        "in the intended venv), and check which interpreter the `pytest`/"
+        "`coverage` entry point resolves to before blaming the venv; a global "
+        "install's metadata ahead on sys.path trips this gate too"
     )
 
 
