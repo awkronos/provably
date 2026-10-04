@@ -2061,7 +2061,7 @@ class TestEngineTranslationErrorLineAlreadyInMsg:
 
 
 class TestEngineEmptyClosureCell:
-    def test_empty_closure_cell_is_skipped(self) -> None:
+    def test_empty_closure_cell_precondition_pinned(self) -> None:
         """_resolve_closure_vars skips variables whose cell is empty (ValueError)."""
         # Create an empty cell via the nested-function trick:
         # compile/exec an outer() that deletes x before returning inner().
@@ -2077,11 +2077,11 @@ class TestEngineEmptyClosureCell:
         )
         ns: dict[str, Any] = {}
         exec(code, ns)  # noqa: S102
-        try:
-            inner = ns["outer"]()
-        except (NameError, UnboundLocalError):
-            # Can't easily create empty cells in all Python versions — skip
-            pytest.skip("Cannot create empty cell in this Python version")
+        inner = ns["outer"]()
+        # Precondition pinned, not laundered: the del-x trick leaves an empty cell
+        # (probe-verified on CPython 3.13: cell_contents raises ValueError).
+        with pytest.raises(ValueError):
+            inner.__closure__[0].cell_contents  # noqa: B018 - deliberate precondition probe
 
         import ast as _ast
 
@@ -2137,3 +2137,61 @@ class TestEngineZ3BoolCounterexample:
         assert cert.counterexample is not None
         # is_true/is_false extraction path: flag must come back as Python True
         assert cert.counterexample.get("flag") is True
+
+
+# ===========================================================================
+# U1004-PROVFIX2 Q1: conftest.requires_z3 disposition — pinned no-op
+# ===========================================================================
+
+
+class TestRequiresZ3MarkerPinnedNoOp:
+    """The skipif(False) marker in tests/conftest.py is a deliberate no-op.
+
+    Provenance (``git log -S``, 8fc50d14, 2026-02-28 "feat: z3-solver is now
+    a hard dependency"): the commit rewired the marker from
+    ``skipif(not HAS_Z3)`` to ``skipif(False)`` while leaving its ~35
+    ``pytestmark``/decorator call sites across 11 test modules intact, so
+    z3-absence ERRORS loudly via the package's hard ``import z3`` instead of
+    silently skipping.  PCOV95 (U1004) measured it cannot launder today; the
+    hazard is a future inversion of the condition, which would silently skip
+    roughly a third of the suite on z3-less hosts with CI still green — the
+    skip-laundering family PROVCOVER's ratchet exists to kill.
+
+    Disposition (this lane): keep + pin.  Removal of the dead marker is the
+    separate P3 census hand-off across the 11 modules; do NOT flip the
+    condition in place.
+    """
+
+    def test_requires_z3_is_never_firing_skipif_false(self) -> None:
+        from pathlib import Path
+
+        src = (Path(__file__).parent / "conftest.py").read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        assigns = [
+            node
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "requires_z3" for t in node.targets)
+        ]
+        assert len(assigns) == 1, f"expected exactly one requires_z3 binding, found {len(assigns)}"
+        call = assigns[0].value
+        assert isinstance(call, ast.Call), "requires_z3 must be bound to a skipif(...) call"
+        assert isinstance(call.func, ast.Attribute) and call.func.attr == "skipif", (
+            "requires_z3 must stay pytest.mark.skipif(...) — see 8fc50d14"
+        )
+        assert len(call.args) == 1, "skipif must take exactly one condition argument"
+        cond = call.args[0]
+        assert isinstance(cond, ast.Constant) and cond.value is False, (
+            "conftest.requires_z3 condition must remain the literal False: z3-solver is a "
+            "HARD dependency (8fc50d14), so absence must error via 'import z3', never "
+            "launder ~1/3 of the suite into silent green skips.  Intending to change "
+            "this?  Run the P3 census across the 11 pytestmark modules first."
+        )
+        reasons = [
+            kw.value.value
+            for kw in call.keywords
+            if kw.arg == "reason" and isinstance(kw.value, ast.Constant)
+        ]
+        assert reasons and "hard dependency" in str(reasons[0]), (
+            "the marker's reason must name the hard-dependency policy (8fc50d14)"
+        )

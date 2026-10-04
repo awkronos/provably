@@ -35,6 +35,7 @@ Covers the following real behavioral gaps (not just import/class-def quirks):
 
 from __future__ import annotations
 
+import ast
 import sys
 import types
 from pathlib import Path
@@ -2836,42 +2837,69 @@ class TestEngineClosureCellValueError:
         assert sig != _contract_sig(template)
 
 
+def _skip_escape_calls_in_class(src_path: Path, class_name: str) -> list[ast.AST]:
+    """AST walk used by the skip-laundering ratchet (U1004-PROVFIX2 P2).
+
+    Returns every ``pytest.skip``/``skip`` call inside class ``class_name``
+    parsed from ``src_path``.  Raises ``ValueError`` if the guarded class has
+    vanished — a missing claim class must fail the ratchet loudly, never
+    silently pass (the guard-to-nothing shape of the original laundering).
+    """
+    tree = ast.parse(src_path.read_text(encoding="utf-8"))
+    cls = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == class_name
+        ),
+        None,
+    )
+    if cls is None:
+        raise ValueError(f"guarded class {class_name!r} not found in {src_path}")
+    return [
+        node
+        for fn in cls.body
+        if isinstance(fn, ast.FunctionDef)
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Attribute) and node.func.attr == "skip")
+            or (isinstance(node.func, ast.Name) and node.func.id == "skip")
+        )
+    ]
+
+
 class TestCoverageFileSkipLaunderingGuard:
     """RSI d05 (2026-10-03): ratchet against skip-laundered coverage claims.
 
-    This file's empty-closure-cell coverage used to sit behind two
-    conditional ``pytest.skip`` escape hatches, so on any host where the
-    ``if False`` cell trick yielded a non-empty cell (or no cell at all) the
-    claimed engine.py:409-410 coverage silently vanished into a skip that CI
-    counts as green.  This guard parses THIS file's AST and forbids
-    ``pytest.skip`` inside the class that owns the empty-cell claim.
+    The empty-closure-cell coverage used to sit behind two conditional
+    ``pytest.skip`` escape hatches, so on any host where the ``if False``
+    cell trick yielded a non-empty cell (or no cell at all) the claimed
+    engine.py:409-410 coverage silently vanished into a skip that CI counts
+    as green.  This guard forbids ``pytest.skip`` inside the classes that own
+    the empty-cell claims — parametrized (U1004-PROVFIX2 P2) over BOTH
+    coverage-family files: this file's TestEngineClosureCellValueError and
+    test_final_coverage.py's TestEngineEmptyClosureCell (engine.py:645-646),
+    pinning the class of regression the sibling file was rewritten to
+    prevent (f740a0c) at both sites instead of only one.
     """
 
-    def test_empty_cell_class_has_no_skip_escape(self) -> None:
-        import ast
+    GUARDED_CLAIM_CLASSES = [
+        (Path(__file__), "TestEngineClosureCellValueError"),
+        (Path(__file__).parent / "test_final_coverage.py", "TestEngineEmptyClosureCell"),
+    ]
 
-        src = Path(__file__).read_text(encoding="utf-8")
-        tree = ast.parse(src)
-        cls = next(
-            node
-            for node in tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "TestEngineClosureCellValueError"
-        )
-        skips = [
-            node
-            for fn in cls.body
-            if isinstance(fn, ast.FunctionDef)
-            for node in ast.walk(fn)
-            if isinstance(node, ast.Call)
-            and (
-                (isinstance(node.func, ast.Attribute) and node.func.attr == "skip")
-                or (isinstance(node.func, ast.Name) and node.func.id == "skip")
-            )
-        ]
+    @pytest.mark.parametrize(
+        ("src_path", "class_name"),
+        GUARDED_CLAIM_CLASSES,
+        ids=["coverage_95_TestEngineClosureCellValueError", "final_coverage_TestEngineEmptyClosureCell"],
+    )
+    def test_empty_cell_class_has_no_skip_escape(self, src_path: Path, class_name: str) -> None:
+        skips = _skip_escape_calls_in_class(src_path, class_name)
         assert not skips, (
-            f"TestEngineClosureCellValueError contains {len(skips)} pytest.skip escape "
-            "hatch(es) — engine.py:409-410 (empty-cell ValueError arm) must be covered "
-            "deterministically, never laundered behind a conditional skip"
+            f"{class_name} in {src_path.name} contains {len(skips)} pytest.skip escape "
+            "hatch(es) — the empty-cell engine claims (engine.py:409-410, engine.py:645-646) "
+            "must be covered deterministically, never laundered behind a conditional skip"
         )
 
 
