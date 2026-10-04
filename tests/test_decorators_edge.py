@@ -5,7 +5,6 @@ from __future__ import annotations
 import warnings
 
 import pytest
-from conftest import requires_z3
 
 from provably.decorators import (
     ContractViolationError,
@@ -20,7 +19,6 @@ from provably.engine import Status, clear_cache, configure
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_async_function_gets_skipped_cert() -> None:
     @verified(post=lambda x, result: result >= 0)
     async def async_fn(x: float) -> float:
@@ -36,7 +34,6 @@ def test_async_function_gets_skipped_cert() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_per_function_timeout() -> None:
     """A 1ms timeout on a complex function should yield UNKNOWN (or VERIFIED on fast machines)."""
 
@@ -57,7 +54,6 @@ def test_per_function_timeout() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_raise_on_failure_true() -> None:
     """raise_on_failure=True raises VerificationError on counterexample."""
     with pytest.raises(VerificationError) as exc_info:
@@ -70,7 +66,6 @@ def test_raise_on_failure_true() -> None:
     assert cert.status == Status.COUNTEREXAMPLE
 
 
-@requires_z3
 def test_raise_on_failure_false_no_exception() -> None:
     """raise_on_failure=False (default) does not raise on counterexample."""
 
@@ -87,7 +82,6 @@ def test_raise_on_failure_false_no_exception() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_strict_emits_deprecation_warning() -> None:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -108,7 +102,6 @@ def test_strict_emits_deprecation_warning() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_no_type_hints_defaults_to_float() -> None:
     @verified(post=lambda x, result: result == x)  # type: ignore[no-untyped-def]
     def identity(x):  # no annotations
@@ -124,7 +117,6 @@ def test_no_type_hints_defaults_to_float() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_proof_is_frozen() -> None:
     @verified(post=lambda x, result: result == x)
     def f(x: float) -> float:
@@ -140,7 +132,6 @@ def test_proof_is_frozen() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_contract_dict_structure() -> None:
     pre_fn = lambda x: x >= 0
     post_fn = lambda x, result: result >= 0
@@ -163,7 +154,6 @@ def test_contract_dict_structure() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_configure_affects_timeout() -> None:
     """configure(timeout_ms=1) is used when no per-call override is given."""
     configure(timeout_ms=1)
@@ -183,7 +173,6 @@ def test_configure_affects_timeout() -> None:
         configure(timeout_ms=5000)  # restore default
 
 
-@requires_z3
 def test_configure_affects_raise_on_failure() -> None:
     """configure(raise_on_failure=True) causes decorator to raise on disproof."""
     configure(raise_on_failure=True)
@@ -202,7 +191,6 @@ def test_configure_affects_raise_on_failure() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_verified_with_docstring() -> None:
     @verified(post=lambda x, result: result == x * 2)
     def double(x: float) -> float:
@@ -217,7 +205,6 @@ def test_verified_with_docstring() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_verified_preserves_return_value() -> None:
     @verified(post=lambda x, result: result >= 0)
     def relu(x: float) -> float:
@@ -236,7 +223,6 @@ def test_verified_preserves_return_value() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_async_contract_dict_structure() -> None:
     """Async functions also get __contract__ attached."""
 
@@ -256,7 +242,6 @@ def test_async_contract_dict_structure() -> None:
 # ---------------------------------------------------------------------------
 
 
-@requires_z3
 def test_verification_error_carries_certificate() -> None:
     with pytest.raises(VerificationError) as exc_info:
 

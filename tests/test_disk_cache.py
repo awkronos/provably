@@ -7,9 +7,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from conftest import requires_z3
-
-pytestmark = requires_z3
 
 from provably import clear_cache, configure, verify_function
 from provably.engine import Status, _disk_cache_path, _load_from_disk, _save_to_disk

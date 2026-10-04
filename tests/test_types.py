@@ -5,10 +5,6 @@ from __future__ import annotations
 from typing import Annotated
 
 import pytest
-from conftest import requires_z3
-
-pytestmark = requires_z3
-
 import z3
 
 from provably.types import (

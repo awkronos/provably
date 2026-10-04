@@ -7,9 +7,6 @@ own builtins, the system is unsound.
 from __future__ import annotations
 
 import pytest
-from conftest import requires_z3
-
-pytestmark = requires_z3
 
 from provably._self_proof import (
     SELF_PROOFS,

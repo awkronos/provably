@@ -8,10 +8,6 @@ import textwrap
 import warnings
 
 import pytest
-from conftest import requires_z3
-
-pytestmark = requires_z3
-
 import z3
 
 from provably import clear_cache, configure, verified, verify_function

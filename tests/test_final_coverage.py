@@ -28,10 +28,6 @@ import textwrap
 from typing import Any
 
 import pytest
-from conftest import requires_z3
-
-pytestmark = requires_z3
-
 import z3
 
 from provably import configure, verified, verify_function

@@ -5,9 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import requires_z3
-
-pytestmark = requires_z3
 
 from provably.engine import ProofCertificate, Status, clear_cache, verify_function
 

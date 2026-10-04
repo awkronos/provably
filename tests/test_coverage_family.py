@@ -3588,7 +3588,6 @@ class TestAsyncRuntimeChecked:
 class TestVerifiedWithCheckContracts:
     def test_check_contracts_on_verified(self) -> None:
         """@verified(check_contracts=True) adds runtime checking on top of static proof."""
-        from conftest import requires_z3
 
         pytest.importorskip("z3")
 
