@@ -3589,7 +3589,6 @@ class TestVerifiedWithCheckContracts:
     def test_check_contracts_on_verified(self) -> None:
         """@verified(check_contracts=True) adds runtime checking on top of static proof."""
 
-        pytest.importorskip("z3")
 
         from provably.decorators import verified
 
@@ -3610,7 +3609,6 @@ class TestVerifiedWithCheckContracts:
 
     def test_stacking_verified_and_runtime_checked(self) -> None:
         """Stack @runtime_checked on top of @verified for extra defence-in-depth."""
-        pytest.importorskip("z3")
 
         from provably.decorators import verified
 
