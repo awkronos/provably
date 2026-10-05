@@ -346,9 +346,11 @@ class TestEngineDefLines:
         from provably.engine import _config, configure
 
         old_timeout = _config.get("timeout_ms")
-        configure(timeout_ms=9999)
-        assert _config["timeout_ms"] == 9999
-        configure(timeout_ms=old_timeout)
+        try:
+            configure(timeout_ms=9999)
+            assert _config["timeout_ms"] == 9999
+        finally:
+            configure(timeout_ms=old_timeout)
 
     def test_configure_unknown_key_raises(self) -> None:
         from provably.engine import configure
@@ -538,20 +540,24 @@ class TestEngineDefLines:
         from provably.engine import _config, _disk_cache_path
 
         old_dir = _config.get("cache_dir")
-        _config["cache_dir"] = None
-        result = _disk_cache_path("test_key")
-        assert result is None
-        _config["cache_dir"] = old_dir
+        try:
+            _config["cache_dir"] = None
+            result = _disk_cache_path("test_key")
+            assert result is None
+        finally:
+            _config["cache_dir"] = old_dir
 
     def test_load_from_disk_no_path(self) -> None:
         """Cover line 340-351 (_load_from_disk with None path)."""
         from provably.engine import _config, _load_from_disk
 
         old_dir = _config.get("cache_dir")
-        _config["cache_dir"] = None
-        result = _load_from_disk("nonexistent_key")
-        assert result is None
-        _config["cache_dir"] = old_dir
+        try:
+            _config["cache_dir"] = None
+            result = _load_from_disk("nonexistent_key")
+            assert result is None
+        finally:
+            _config["cache_dir"] = old_dir
 
     def test_save_to_disk_no_path(self) -> None:
         """_save_to_disk with a disabled cache dir writes nothing and does not raise."""
@@ -1548,20 +1554,24 @@ class TestEngineNewFunctions:
         """Cover _disk_cache_path None path."""
         from provably.engine import _disk_cache_path, configure
 
-        configure(cache_dir=None)
-        result = _disk_cache_path("anykey")
-        assert result is None
-        configure(cache_dir=str(Path.home() / ".provably" / "cache"))
+        try:
+            configure(cache_dir=None)
+            result = _disk_cache_path("anykey")
+            assert result is None
+        finally:
+            configure(cache_dir=str(Path.home() / ".provably" / "cache"))
 
     def test_load_from_disk_path_none(self) -> None:
         """Cover _load_from_disk None path (disk disabled)."""
         from provably.engine import _load_from_disk, clear_cache, configure
 
-        configure(cache_dir=None)
-        clear_cache()
-        result = _load_from_disk("anykey")
-        assert result is None
-        configure(cache_dir=str(Path.home() / ".provably" / "cache"))
+        try:
+            configure(cache_dir=None)
+            clear_cache()
+            result = _load_from_disk("anykey")
+            assert result is None
+        finally:
+            configure(cache_dir=str(Path.home() / ".provably" / "cache"))
 
     def test_validate_contract_arity_uninspectable(self) -> None:
         """Cover _validate_contract_arity ValueError/TypeError path."""
